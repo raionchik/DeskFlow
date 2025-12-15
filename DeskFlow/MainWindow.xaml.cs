@@ -63,6 +63,11 @@ namespace DeskFlow
         private DispatcherTimer? notesTimer;
         private DispatcherTimer? notificationTimer;
 
+        private ClockWidget? clockWidget;
+        private CalendarWidget? calendarWidget;
+        private NotesWidget? notesWidget;
+        private TasksWidget? tasksWidget;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -151,6 +156,10 @@ namespace DeskFlow
             notesTimer?.Start();
             NotesStatus.Text = "Сохранение...";
             NotesStatus.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(251, 191, 36));
+            if (notesWidget != null)
+            {
+                notesWidget.NotesTextBox.Text = NotesTextBox.Text;
+            }
         }
 
         private void SaveNotesToFile()
@@ -201,16 +210,20 @@ namespace DeskFlow
                 Text = NewTaskTextBox.Text,
                 Completed = false
             };
-            tasks.Add(task);
+            tasks.Add(task); // Виджет обновится сам, так как коллекция общая
             NewTaskTextBox.Text = string.Empty;
             SaveData();
             UpdateTasksStats();
+
+            // УДАЛЕНО: if (tasksWidget != null) { ... }
         }
 
         private void TaskCheckBox_Changed(object sender, RoutedEventArgs e)
         {
             SaveData();
             UpdateTasksStats();
+
+            // УДАЛЕНО: if (tasksWidget != null) { ... }
         }
 
         private void BtnDeleteTask_Click(object sender, RoutedEventArgs e)
@@ -219,9 +232,11 @@ namespace DeskFlow
             var task = button?.Tag as TaskItem;
             if (task != null)
             {
-                tasks.Remove(task);
+                tasks.Remove(task); // Виджет обновится сам
                 SaveData();
                 UpdateTasksStats();
+
+                // УДАЛЕНО: if (tasksWidget != null) { ... }
             }
         }
 
@@ -229,6 +244,8 @@ namespace DeskFlow
         {
             var completed = tasks.Count(t => t.Completed);
             TasksStats.Text = $"Выполнено: {completed} из {tasks.Count}";
+
+            // УДАЛЕНО: if (tasksWidget != null) { ... }
         }
 
         // === Мониторинг рабочего стола ===
@@ -827,6 +844,77 @@ namespace DeskFlow
             SettingsPanel.Visibility = Visibility.Collapsed;
 
             panel.Visibility = Visibility.Visible;
+        }
+
+        // Показ виджетов на рабочем столе
+        private void ShowClockOnDesktop_Click(object sender, RoutedEventArgs e)
+        {
+            if (clockWidget == null || clockWidget.IsLoaded == false)
+            {
+                clockWidget = new ClockWidget();
+                clockWidget.Show();
+            }
+            else
+            {
+                clockWidget.Close();
+                clockWidget = null;
+            }
+        }
+
+        private void ShowCalendarOnDesktop_Click(object sender, RoutedEventArgs e)
+        {
+            if (calendarWidget == null || calendarWidget.IsLoaded == false)
+            {
+                calendarWidget = new CalendarWidget();
+                calendarWidget.Show();
+            }
+            else
+            {
+                calendarWidget.Close();
+                calendarWidget = null;
+            }
+        }
+
+        private void ShowNotesOnDesktop_Click(object sender, RoutedEventArgs e)
+        {
+            if (notesWidget == null || notesWidget.IsLoaded == false)
+            {
+                notesWidget = new NotesWidget();
+                notesWidget.NotesTextBox.Text = NotesTextBox.Text;
+                notesWidget.NotesTextBox.TextChanged += (s, args) => NotesTextBox.Text = notesWidget.NotesTextBox.Text;
+                notesWidget.Show();
+            }
+            else
+            {
+                notesWidget.Close();
+                notesWidget = null;
+            }
+        }
+
+        private void ShowTasksOnDesktop_Click(object sender, RoutedEventArgs e)
+        {
+            // Проверяем, открыт ли уже виджет
+            if (tasksWidget == null || tasksWidget.IsLoaded == false)
+            {
+                // ОШИБКА CS7036 ИСПРАВЛЕНИЕ: Передаем 'tasks' и Action для сохранения
+                tasksWidget = new TasksWidget(tasks, () =>
+                {
+                    // Этот код выполнится, когда в виджете нажмут галочку или удалят задачу
+                    SaveData();
+                    UpdateStats();
+                });
+
+                // ОШИБКИ CS1061 ИСПРАВЛЕНИЕ:
+                // Мы удалили строки типа: tasksWidget.TasksListBox... или tasksWidget.NewTaskTextBox...
+                // Виджет сам знает, как отображать данные, так как мы передали ему 'tasks' в конструкторе выше.
+
+                tasksWidget.Show();
+            }
+            else
+            {
+                tasksWidget.Close();
+                tasksWidget = null;
+            }
         }
     }
 }

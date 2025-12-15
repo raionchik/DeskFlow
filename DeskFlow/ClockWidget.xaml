@@ -1,0 +1,30 @@
+﻿<Window x:Class="DeskFlow.ClockWidget"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Clock" Height="250" Width="300"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" MouseLeftButtonDown="Window_MouseLeftButtonDown">
+    <Border Background="#0F172A" CornerRadius="10" BorderBrush="#334155" BorderThickness="1" Padding="20">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
+                <TextBlock Text="🕐" FontSize="24" Margin="0,0,10,0"/>
+                <TextBlock Text="Часы и дата" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <Border Background="#1E293B" CornerRadius="8" Padding="30,20" Margin="0,0,0,15">
+                <StackPanel>
+                    <TextBlock x:Name="ClockTime" Text="00:00:00" FontSize="42" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="ClockDate" Text="Понедельник, 1 января 2024" FontSize="14" Foreground="#94A3B8" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <StackPanel>
+                <TextBlock Text="Формат времени:" Foreground="#94A3B8" FontSize="12" Margin="0,0,0,5"/>
+                <ComboBox x:Name="ClockFormat" SelectedIndex="0" Background="#1E293B" Foreground="White" BorderBrush="#475569" SelectionChanged="ClockFormat_SelectionChanged">
+                    <ComboBoxItem Content="24 часа"/>
+                    <ComboBoxItem Content="12 часов (AM/PM)"/>
+                </ComboBox>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>
