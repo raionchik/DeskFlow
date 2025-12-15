@@ -1,53 +1,234 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using Newtonsoft.Json;
+using WinForms = System.Windows.Forms;
 
 namespace DeskFlow
 {
+    public class FileItem
+    {
+        public Guid Id { get; set; }
+        public string? Name { get; set; }
+        public string? Path { get; set; }
+        public string? Size { get; set; }
+        public string? Category { get; set; }
+        public string? Icon { get; set; }
+        [JsonIgnore]
+        public SolidColorBrush? CategoryColor { get; set; }
+    }
+
+    public class Profile
+    {
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public List<FileItem>? Files { get; set; }
+        public string FilesCount => $"Файлов: {Files?.Count ?? 0}";
+    }
+
+    public class TaskItem
+    {
+        public Guid Id { get; set; }
+        public string? Text { get; set; }
+        public bool Completed { get; set; }
+    }
+
+    public class AppData
+    {
+        public List<FileItem>? Files { get; set; }
+        public List<Profile>? Profiles { get; set; }
+        public List<TaskItem>? Tasks { get; set; }
+    }
+
     public partial class MainWindow : Window
     {
         private ObservableCollection<FileItem> files = new ObservableCollection<FileItem>();
         private ObservableCollection<Profile> profiles = new ObservableCollection<Profile>();
+        private ObservableCollection<TaskItem> tasks = new ObservableCollection<TaskItem>();
         private List<List<FileItem>> sortingHistory = new List<List<FileItem>>();
         private string dataFilePath;
         private string desktopPath;
-        private FileSystemWatcher desktopWatcher;
+        private string sortDirectory;
+        private FileSystemWatcher? desktopWatcher;
+        private DispatcherTimer? clockTimer;
+        private DispatcherTimer? notesTimer;
+        private DispatcherTimer? notificationTimer;
 
         public MainWindow()
         {
             InitializeComponent();
 
             desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            sortDirectory = desktopPath; // По умолчанию - рабочий стол
             dataFilePath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "DeskFlow",
                 "data.json"
             );
-            Directory.CreateDirectory(Path.GetDirectoryName(dataFilePath));
+            var directoryName = Path.GetDirectoryName(dataFilePath);
+            if (directoryName != null)
+            {
+                Directory.CreateDirectory(directoryName);
+            }
 
             FilesListBox.ItemsSource = files;
             ProfilesListBox.ItemsSource = profiles;
+            TasksListBox.ItemsSource = tasks;
+            SortDirectoryTextBox.Text = sortDirectory;
 
             LoadData();
+            LoadNotesFromFile();
             UpdateStats();
 
-            // Инициализация мониторинга рабочего стола
             InitializeDesktopWatcher();
+            InitializeClock();
+            InitializeNotesAutoSave();
+            InitializeNotificationTimer();
+            ClockFormat.SelectionChanged += (s, e) => UpdateClock();
+        }
+
+        private void InitializeNotificationTimer()
+        {
+            notificationTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            notificationTimer.Tick += (s, e) =>
+            {
+                NotificationToast.Visibility = Visibility.Collapsed;
+                notificationTimer.Stop();
+            };
         }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            // Автоматическое сканирование рабочего стола при запуске
             ScanDesktop();
-            ShowNotification($"Автоматически загружено {files.Count} файлов с рабочего стола");
+            ShowNotification($"✓ Загружено {files.Count} файлов с рабочего стола");
+        }
+
+        // === Часы ===
+        private void InitializeClock()
+        {
+            clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            clockTimer.Tick += (s, e) => UpdateClock();
+            clockTimer.Start();
+            UpdateClock();
+        }
+
+        private void UpdateClock()
+        {
+            var now = DateTime.Now;
+            bool is24Hour = ClockFormat.SelectedIndex == 0;
+
+            ClockTime.Text = is24Hour
+                ? now.ToString("HH:mm:ss")
+                : now.ToString("hh:mm:ss tt");
+
+            var culture = new CultureInfo("ru-RU");
+            ClockDate.Text = now.ToString("dddd, d MMMM yyyy", culture);
+        }
+
+        // === Автосохранение заметок ===
+        private void InitializeNotesAutoSave()
+        {
+            notesTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            notesTimer.Tick += (s, e) =>
+            {
+                SaveNotesToFile();
+                notesTimer.Stop();
+            };
+        }
+
+        private void NotesTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            notesTimer?.Stop();
+            notesTimer?.Start();
+            NotesStatus.Text = "Сохранение...";
+            NotesStatus.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(251, 191, 36));
+        }
+
+        private void SaveNotesToFile()
+        {
+            try
+            {
+                var notesPath = Path.Combine(Path.GetDirectoryName(dataFilePath) ?? string.Empty, "notes.txt");
+                File.WriteAllText(notesPath, NotesTextBox.Text);
+                NotesStatus.Text = "✓ Сохранено автоматически";
+                NotesStatus.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(16, 185, 129));
+            }
+            catch { }
+        }
+
+        private void LoadNotesFromFile()
+        {
+            try
+            {
+                var notesPath = Path.Combine(Path.GetDirectoryName(dataFilePath) ?? string.Empty, "notes.txt");
+                if (File.Exists(notesPath))
+                {
+                    NotesTextBox.Text = File.ReadAllText(notesPath);
+                }
+            }
+            catch { }
+        }
+
+        // === Задачи ===
+        private void NewTaskTextBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter && !string.IsNullOrWhiteSpace(NewTaskTextBox.Text))
+            {
+                AddTask();
+            }
+        }
+
+        private void BtnAddTask_Click(object sender, RoutedEventArgs e)
+        {
+            AddTask();
+        }
+
+        private void AddTask()
+        {
+            if (string.IsNullOrWhiteSpace(NewTaskTextBox.Text)) return;
+            var task = new TaskItem
+            {
+                Id = Guid.NewGuid(),
+                Text = NewTaskTextBox.Text,
+                Completed = false
+            };
+            tasks.Add(task);
+            NewTaskTextBox.Text = string.Empty;
+            SaveData();
+            UpdateTasksStats();
+        }
+
+        private void TaskCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            SaveData();
+            UpdateTasksStats();
+        }
+
+        private void BtnDeleteTask_Click(object sender, RoutedEventArgs e)
+        {
+            var button = sender as System.Windows.Controls.Button;
+            var task = button?.Tag as TaskItem;
+            if (task != null)
+            {
+                tasks.Remove(task);
+                SaveData();
+                UpdateTasksStats();
+            }
+        }
+
+        private void UpdateTasksStats()
+        {
+            var completed = tasks.Count(t => t.Completed);
+            TasksStats.Text = $"Выполнено: {completed} из {tasks.Count}";
         }
 
         // === Мониторинг рабочего стола ===
@@ -60,7 +241,6 @@ namespace DeskFlow
                 Filter = "*.*",
                 EnableRaisingEvents = true
             };
-
             desktopWatcher.Created += OnDesktopFileCreated;
             desktopWatcher.Deleted += OnDesktopFileDeleted;
             desktopWatcher.Renamed += OnDesktopFileRenamed;
@@ -69,7 +249,6 @@ namespace DeskFlow
         private void OnDesktopFileCreated(object sender, FileSystemEventArgs e)
         {
             if (ChkMonitoring?.IsChecked != true) return;
-
             Dispatcher.Invoke(() =>
             {
                 try
@@ -81,8 +260,7 @@ namespace DeskFlow
                         files.Add(fileItem);
                         SaveData();
                         UpdateStats();
-                        ShowNotification($"➕ Обнаружен новый файл: {fileInfo.Name}");
-
+                        ShowNotification($"➕ Новый файл: {fileInfo.Name}");
                         if (ChkAutoSort?.IsChecked == true)
                         {
                             AutoSort();
@@ -96,7 +274,6 @@ namespace DeskFlow
         private void OnDesktopFileDeleted(object sender, FileSystemEventArgs e)
         {
             if (ChkMonitoring?.IsChecked != true) return;
-
             Dispatcher.Invoke(() =>
             {
                 var fileToRemove = files.FirstOrDefault(f => f.Path == e.FullPath);
@@ -105,7 +282,6 @@ namespace DeskFlow
                     files.Remove(fileToRemove);
                     SaveData();
                     UpdateStats();
-                    ShowNotification($"➖ Файл удалён с рабочего стола: {fileToRemove.Name}");
                 }
             });
         }
@@ -113,7 +289,6 @@ namespace DeskFlow
         private void OnDesktopFileRenamed(object sender, RenamedEventArgs e)
         {
             if (ChkMonitoring?.IsChecked != true) return;
-
             Dispatcher.Invoke(() =>
             {
                 var fileToUpdate = files.FirstOrDefault(f => f.Path == e.OldFullPath);
@@ -122,7 +297,6 @@ namespace DeskFlow
                     fileToUpdate.Path = e.FullPath;
                     fileToUpdate.Name = Path.GetFileName(e.FullPath);
                     SaveData();
-                    ShowNotification($"📝 Файл переименован: {e.Name}");
                 }
             });
         }
@@ -133,8 +307,8 @@ namespace DeskFlow
             {
                 desktopWatcher.EnableRaisingEvents = ChkMonitoring.IsChecked == true;
                 ShowNotification(ChkMonitoring.IsChecked == true
-                    ? "✓ Мониторинг рабочего стола включен"
-                    : "Мониторинг рабочего стола отключен");
+                    ? "✓ Мониторинг включен"
+                    : "Мониторинг отключен");
             }
         }
 
@@ -145,11 +319,11 @@ namespace DeskFlow
                 : "Автосортировка отключена");
         }
 
-        // === Сканирование рабочего стола ===
+        // === Сканирование и перемещение файлов ===
         private void BtnScanDesktop_Click(object sender, RoutedEventArgs e)
         {
             ScanDesktop();
-            ShowNotification($"✓ Рабочий стол просканирован. Найдено файлов: {files.Count}");
+            ShowNotification($"✓ Найдено файлов: {files.Count}");
         }
 
         private void ScanDesktop()
@@ -164,19 +338,16 @@ namespace DeskFlow
                     try
                     {
                         var fileInfo = new FileInfo(filePath);
-                        // Пропускаем скрытые и системные файлы
                         if ((fileInfo.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden ||
                             (fileInfo.Attributes & FileAttributes.System) == FileAttributes.System)
                         {
                             continue;
                         }
-
                         var fileItem = CreateFileItem(fileInfo);
                         files.Add(fileItem);
                     }
-                    catch { } // Игнорируем файлы, к которым нет доступа
+                    catch { }
                 }
-
                 SaveData();
                 UpdateStats();
             }
@@ -186,9 +357,202 @@ namespace DeskFlow
             }
         }
 
+        private void BtnAddFiles_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog { Multiselect = true };
+            if (dlg.ShowDialog() == true)
+            {
+                foreach (var file in dlg.FileNames)
+                {
+                    var dest = Path.Combine(desktopPath, Path.GetFileName(file));
+                    if (!File.Exists(dest))
+                    {
+                        try
+                        {
+                            File.Copy(file, dest);
+                        }
+                        catch (Exception ex)
+                        {
+                            ShowNotification($"Ошибка добавления: {ex.Message}", true);
+                        }
+                    }
+                }
+            }
+        }
+
+        private void BtnAutoSort_Click(object sender, RoutedEventArgs e)
+        {
+            AutoSort();
+        }
+
+        private void AutoSort()
+        {
+            var sorted = files.OrderBy(f => f.Category).ThenBy(f => f.Name).ToList();
+            sortingHistory.Add(files.ToList());
+            files.Clear();
+            foreach (var f in sorted) files.Add(f);
+            ShowNotification("✓ Файлы отсортированы виртуально");
+        }
+
+        private void BtnUndo_Click(object sender, RoutedEventArgs e)
+        {
+            if (sortingHistory.Count > 0)
+            {
+                var prev = sortingHistory.Last();
+                sortingHistory.RemoveAt(sortingHistory.Count - 1);
+                files.Clear();
+                foreach (var f in prev) files.Add(f);
+                ShowNotification("✓ Отмена сортировки");
+            }
+            else
+            {
+                ShowNotification("Нет действий для отмены", true);
+            }
+        }
+
+        private void BtnClear_Click(object sender, RoutedEventArgs e)
+        {
+            if (files.Count == 0) return;
+            if (System.Windows.MessageBox.Show("Удалить все файлы с рабочего стола?", "Очистка", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            {
+                foreach (var f in files.ToList())
+                {
+                    try
+                    {
+                        File.Delete(f.Path ?? string.Empty);
+                    }
+                    catch { }
+                }
+                files.Clear();
+                SaveData();
+                UpdateStats();
+                ShowNotification("✓ Рабочий стол очищен");
+            }
+        }
+
+        private void BtnDeleteFile_Click(object sender, RoutedEventArgs e)
+        {
+            var btn = sender as System.Windows.Controls.Button;
+            var file = btn?.Tag as FileItem;
+            if (file != null && System.Windows.MessageBox.Show($"Удалить {file.Name ?? string.Empty}?", "Удаление", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    File.Delete(file.Path ?? string.Empty);
+                    files.Remove(file);
+                    SaveData();
+                    UpdateStats();
+                    ShowNotification($"✓ Удален: {file.Name ?? string.Empty}");
+                }
+                catch (Exception ex)
+                {
+                    ShowNotification($"Ошибка: {ex.Message}", true);
+                }
+            }
+        }
+
+        private void BtnSelectDirectory_Click(object sender, RoutedEventArgs e)
+        {
+            using (var dialog = new WinForms.FolderBrowserDialog())
+            {
+                dialog.SelectedPath = sortDirectory;
+                dialog.Description = "Выберите папку для создания категорий";
+                if (dialog.ShowDialog() == WinForms.DialogResult.OK)
+                {
+                    sortDirectory = dialog.SelectedPath;
+                    SortDirectoryTextBox.Text = sortDirectory;
+                    ShowNotification($"✓ Выбрана папка: {Path.GetFileName(sortDirectory)}");
+                }
+            }
+        }
+
+        private void BtnMoveToFolders_Click(object sender, RoutedEventArgs e)
+        {
+            if (files.Count == 0)
+            {
+                ShowNotification("Нет файлов для перемещения", true);
+                return;
+            }
+            var result = System.Windows.MessageBox.Show(
+                $"Переместить {files.Count} файлов в папки-категории?\n\nПапки будут созданы в: {sortDirectory}",
+                "Подтверждение перемещения",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question
+            );
+            if (result == MessageBoxResult.Yes)
+            {
+                MoveFilesToCategoryFolders();
+            }
+        }
+
+        private void MoveFilesToCategoryFolders()
+        {
+            try
+            {
+                int movedCount = 0;
+                var categories = files.GroupBy(f => f.Category);
+                foreach (var category in categories)
+                {
+                    // Создаем папку для категории
+                    var categoryFolder = Path.Combine(sortDirectory, category.Key ?? string.Empty);
+                    Directory.CreateDirectory(categoryFolder);
+                    foreach (var file in category)
+                    {
+                        try
+                        {
+                            if (File.Exists(file.Path))
+                            {
+                                var newPath = Path.Combine(categoryFolder, file.Name ?? string.Empty);
+
+                                // Если файл с таким именем уже существует, добавляем номер
+                                if (File.Exists(newPath))
+                                {
+                                    var nameWithoutExt = Path.GetFileNameWithoutExtension(file.Name ?? string.Empty);
+                                    var extension = Path.GetExtension(file.Name ?? string.Empty);
+                                    int counter = 1;
+
+                                    while (File.Exists(newPath))
+                                    {
+                                        newPath = Path.Combine(categoryFolder, $"{nameWithoutExt} ({counter}){extension}");
+                                        counter++;
+                                    }
+                                }
+                                File.Move(file.Path ?? string.Empty, newPath);
+                                file.Path = newPath; // Обновляем путь
+                                movedCount++;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            ShowNotification($"Ошибка перемещения {file.Name ?? string.Empty}: {ex.Message}", true);
+                        }
+                    }
+                }
+                SaveData();
+                ShowNotification($"✓ Перемещено файлов: {movedCount}");
+
+                // Предлагаем открыть папку
+                var openResult = System.Windows.MessageBox.Show(
+                    "Открыть папку с отсортированными файлами?",
+                    "Перемещение завершено",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information
+                );
+                if (openResult == MessageBoxResult.Yes)
+                {
+                    System.Diagnostics.Process.Start("explorer.exe", sortDirectory);
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowNotification($"Ошибка перемещения: {ex.Message}", true);
+            }
+        }
+
         private FileItem CreateFileItem(FileInfo fileInfo)
         {
-            var category = GetFileCategory(fileInfo.Extension);
+            var extension = fileInfo.Extension.ToLower();
+            var category = GetFileCategory(extension);
             return new FileItem
             {
                 Id = Guid.NewGuid(),
@@ -196,9 +560,159 @@ namespace DeskFlow
                 Path = fileInfo.FullName,
                 Size = FormatFileSize(fileInfo.Length),
                 Category = category,
-                Icon = GetFileIcon(fileInfo.Extension),
+                Icon = GetFileIcon(extension),
                 CategoryColor = GetCategoryColor(category)
             };
+        }
+
+        private string GetFileCategory(string ext)
+        {
+            if (new[] { ".doc", ".docx", ".pdf", ".txt", ".xlsx", ".pptx" }.Contains(ext)) return "Документы";
+            if (new[] { ".jpg", ".png", ".gif", ".bmp", ".svg" }.Contains(ext)) return "Изображения";
+            if (new[] { ".mp4", ".avi", ".mkv", ".mov" }.Contains(ext)) return "Видео";
+            if (new[] { ".mp3", ".wav", ".flac", ".aac" }.Contains(ext)) return "Аудио";
+            if (new[] { ".zip", ".rar", ".7z", ".tar" }.Contains(ext)) return "Архивы";
+            return "Другие";
+        }
+
+        private string GetFileIcon(string ext)
+        {
+            var category = GetFileCategory(ext);
+            switch (category)
+            {
+                case "Документы": return "📄";
+                case "Изображения": return "🖼️";
+                case "Видео": return "🎥";
+                case "Аудио": return "🎵";
+                case "Архивы": return "📦";
+                default: return "📁";
+            }
+        }
+
+        private SolidColorBrush GetCategoryColor(string category)
+        {
+            switch (category)
+            {
+                case "Документы": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(59, 130, 246));
+                case "Изображения": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(16, 185, 129));
+                case "Видео": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(239, 68, 68));
+                case "Аудио": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(245, 158, 11));
+                case "Архивы": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(139, 92, 246));
+                default: return new SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 116, 139));
+            }
+        }
+
+        private string FormatFileSize(long bytes)
+        {
+            if (bytes < 1024) return $"{bytes} B";
+            if (bytes < 1024 * 1024) return $"{bytes / 1024:F2} KB";
+            if (bytes < 1024 * 1024 * 1024) return $"{bytes / (1024 * 1024):F2} MB";
+            return $"{bytes / (1024 * 1024 * 1024):F2} GB";
+        }
+
+        // === Профили ===
+        private void BtnCreateProfile_Click(object sender, RoutedEventArgs e)
+        {
+            var input = Microsoft.VisualBasic.Interaction.InputBox("Имя профиля:", "Создать профиль", "Профиль 1");
+            if (!string.IsNullOrEmpty(input))
+            {
+                var profile = new Profile
+                {
+                    Name = input,
+                    Description = "Описание...",
+                    Files = files.ToList()
+                };
+                profiles.Add(profile);
+                SaveData();
+                UpdateStats();
+                ShowNotification($"✓ Создан профиль: {input}");
+            }
+        }
+
+        private void BtnApplyProfile_Click(object sender, RoutedEventArgs e)
+        {
+            var btn = sender as System.Windows.Controls.Button;
+            var profile = btn?.Tag as Profile;
+            if (profile != null)
+            {
+                files.Clear();
+                foreach (var f in profile.Files ?? new List<FileItem>())
+                {
+                    f.Icon = GetFileIcon(Path.GetExtension(f.Path ?? string.Empty));
+                    f.CategoryColor = GetCategoryColor(f.Category ?? string.Empty);
+                    files.Add(f);
+                }
+                SaveData();
+                UpdateStats();
+                ShowNotification($"✓ Применен профиль: {profile.Name ?? string.Empty}");
+            }
+        }
+
+        private void BtnDeleteProfile_Click(object sender, RoutedEventArgs e)
+        {
+            var btn = sender as System.Windows.Controls.Button;
+            var profile = btn?.Tag as Profile;
+            if (profile != null)
+            {
+                profiles.Remove(profile);
+                SaveData();
+                UpdateStats();
+            }
+        }
+
+        // === Резервное копирование ===
+        private void BtnExport_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "JSON files (*.json)|*.json" };
+            if (dlg.ShowDialog() == true)
+            {
+                try
+                {
+                    var data = new AppData
+                    {
+                        Files = files.ToList(),
+                        Profiles = profiles.ToList(),
+                        Tasks = tasks.ToList()
+                    };
+                    File.WriteAllText(dlg.FileName, JsonConvert.SerializeObject(data, Formatting.Indented));
+                    ShowNotification("✓ Данные экспортированы");
+                }
+                catch (Exception ex)
+                {
+                    ShowNotification($"Ошибка экспорта: {ex.Message}", true);
+                }
+            }
+        }
+
+        private void BtnImport_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "JSON files (*.json)|*.json" };
+            if (dlg.ShowDialog() == true)
+            {
+                try
+                {
+                    var json = File.ReadAllText(dlg.FileName);
+                    var data = JsonConvert.DeserializeObject<AppData>(json);
+                    files.Clear();
+                    foreach (var f in data?.Files ?? new List<FileItem>())
+                    {
+                        f.Icon = GetFileIcon(Path.GetExtension(f.Path ?? string.Empty));
+                        f.CategoryColor = GetCategoryColor(f.Category ?? string.Empty);
+                        files.Add(f);
+                    }
+                    profiles.Clear();
+                    foreach (var p in data?.Profiles ?? new List<Profile>()) profiles.Add(p);
+                    tasks.Clear();
+                    foreach (var t in data?.Tasks ?? new List<TaskItem>()) tasks.Add(t);
+                    SaveData();
+                    UpdateStats();
+                    ShowNotification("✓ Данные импортированы");
+                }
+                catch (Exception ex)
+                {
+                    ShowNotification($"Ошибка импорта: {ex.Message}", true);
+                }
+            }
         }
 
         // === Работа с данными ===
@@ -212,14 +726,21 @@ namespace DeskFlow
                     var data = JsonConvert.DeserializeObject<AppData>(json);
                     if (data != null)
                     {
-                        // Проверяем, существуют ли файлы
-                        var validFiles = data.Files?.Where(f => File.Exists(f.Path)).ToList() ?? new List<FileItem>();
+                        var validFiles = data.Files?.Where(f => File.Exists(f.Path ?? string.Empty)).ToList() ?? new List<FileItem>();
+                        foreach (var f in validFiles)
+                        {
+                            f.Icon = GetFileIcon(Path.GetExtension(f.Path ?? string.Empty));
+                            f.CategoryColor = GetCategoryColor(f.Category ?? string.Empty);
+                        }
                         files = new ObservableCollection<FileItem>(validFiles);
                         profiles = new ObservableCollection<Profile>(data.Profiles ?? new List<Profile>());
+                        tasks = new ObservableCollection<TaskItem>(data.Tasks ?? new List<TaskItem>());
                         FilesListBox.ItemsSource = files;
                         ProfilesListBox.ItemsSource = profiles;
+                        TasksListBox.ItemsSource = tasks;
                     }
                 }
+                UpdateStats();
             }
             catch (Exception ex)
             {
@@ -234,7 +755,8 @@ namespace DeskFlow
                 var data = new AppData
                 {
                     Files = files.ToList(),
-                    Profiles = profiles.ToList()
+                    Profiles = profiles.ToList(),
+                    Tasks = tasks.ToList()
                 };
                 var json = JsonConvert.SerializeObject(data, Formatting.Indented);
                 File.WriteAllText(dataFilePath, json);
@@ -245,10 +767,39 @@ namespace DeskFlow
             }
         }
 
-        // === Навигация по табам ===
+        private void UpdateStats()
+        {
+            FileCountText.Text = $"Файлов: {files.Count}";
+            ProfileCountText.Text = $"Профилей: {profiles.Count}";
+            FilesStatsText.Text = $"Файлов в системе: {files.Count}";
+            ProfilesStatsText.Text = $"Профилей: {profiles.Count}";
+            TasksStatsText.Text = $"Задач: {tasks.Count}";
+            UpdateTasksStats();
+        }
+
+        private void ShowNotification(string text, bool error = false)
+        {
+            NotificationText.Text = text;
+            NotificationToast.BorderBrush = error ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(239, 68, 68)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(16, 185, 129));
+            NotificationToast.Visibility = Visibility.Visible;
+            notificationTimer?.Stop();
+            notificationTimer?.Start();
+        }
+
+        // === Навигация ===
         private void BtnDesktop_Click(object sender, RoutedEventArgs e)
         {
             ShowPanel(DesktopPanel);
+        }
+
+        private void BtnWidgets_Click(object sender, RoutedEventArgs e)
+        {
+            ShowPanel(WidgetsPanel);
+        }
+
+        private void BtnNotesTasks_Click(object sender, RoutedEventArgs e)
+        {
+            ShowPanel(NotesTasksPanel);
         }
 
         private void BtnProfiles_Click(object sender, RoutedEventArgs e)
@@ -264,393 +815,18 @@ namespace DeskFlow
         private void BtnSettings_Click(object sender, RoutedEventArgs e)
         {
             ShowPanel(SettingsPanel);
-            DesktopPathText.Text = $"Путь к рабочему столу: {desktopPath}";
         }
 
         private void ShowPanel(Grid panel)
         {
             DesktopPanel.Visibility = Visibility.Collapsed;
+            WidgetsPanel.Visibility = Visibility.Collapsed;
+            NotesTasksPanel.Visibility = Visibility.Collapsed;
             ProfilesPanel.Visibility = Visibility.Collapsed;
             SortPanel.Visibility = Visibility.Collapsed;
             SettingsPanel.Visibility = Visibility.Collapsed;
+
             panel.Visibility = Visibility.Visible;
         }
-
-        // === Работа с файлами ===
-        private void BtnAddFiles_Click(object sender, RoutedEventArgs e)
-        {
-            var dialog = new OpenFileDialog
-            {
-                Multiselect = true,
-                Title = "Выберите файлы"
-            };
-
-            if (dialog.ShowDialog() == true)
-            {
-                foreach (var filePath in dialog.FileNames)
-                {
-                    // Проверяем, не добавлен ли уже этот файл
-                    if (files.Any(f => f.Path == filePath))
-                        continue;
-
-                    var fileInfo = new FileInfo(filePath);
-                    var fileItem = CreateFileItem(fileInfo);
-                    files.Add(fileItem);
-                }
-
-                SaveData();
-                UpdateStats();
-                ShowNotification($"Добавлено файлов: {dialog.FileNames.Length}");
-
-                if (ChkAutoSort.IsChecked == true)
-                {
-                    AutoSort();
-                }
-            }
-        }
-
-        private void BtnDeleteFile_Click(object sender, RoutedEventArgs e)
-        {
-            var button = sender as Button;
-            var fileItem = button?.Tag as FileItem;
-            if (fileItem != null)
-            {
-                files.Remove(fileItem);
-                SaveData();
-                UpdateStats();
-                ShowNotification("Файл удалён из списка");
-            }
-        }
-
-        private void BtnClear_Click(object sender, RoutedEventArgs e)
-        {
-            var result = MessageBox.Show(
-                "Очистить весь список файлов?",
-                "Подтверждение",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question
-            );
-
-            if (result == MessageBoxResult.Yes)
-            {
-                files.Clear();
-                SaveData();
-                UpdateStats();
-                ShowNotification("✓ Список очищен");
-            }
-        }
-
-        private void BtnAutoSort_Click(object sender, RoutedEventArgs e)
-        {
-            AutoSort();
-        }
-
-        private void AutoSort()
-        {
-            if (files.Count == 0)
-            {
-                ShowNotification("Нет файлов для сортировки", true);
-                return;
-            }
-
-            // Сохраняем текущее состояние в историю
-            sortingHistory.Add(files.ToList());
-            if (sortingHistory.Count > 50)
-                sortingHistory.RemoveAt(0);
-
-            // Сортируем файлы: сначала по категории, потом по имени
-            var sortedFiles = files.OrderBy(f => GetCategorySortOrder(f.Category))
-                                   .ThenBy(f => f.Name)
-                                   .ToList();
-
-            // Очищаем коллекцию и добавляем отсортированные файлы
-            files.Clear();
-            foreach (var file in sortedFiles)
-            {
-                files.Add(file);
-            }
-
-            SaveData();
-            ShowNotification("✓ Файлы отсортированы по категориям");
-        }
-
-        private int GetCategorySortOrder(string category)
-        {
-            return category switch
-            {
-                "Документы" => 1,
-                "Изображения" => 2,
-                "Видео" => 3,
-                "Аудио" => 4,
-                "Архивы" => 5,
-                "Исполняемые" => 6,
-                _ => 7
-            };
-        }
-
-        private void BtnUndo_Click(object sender, RoutedEventArgs e)
-        {
-            if (sortingHistory.Count > 0)
-            {
-                var previous = sortingHistory.Last();
-                sortingHistory.RemoveAt(sortingHistory.Count - 1);
-
-                files.Clear();
-                foreach (var item in previous)
-                {
-                    files.Add(item);
-                }
-
-                SaveData();
-                ShowNotification("↺ Сортировка отменена");
-            }
-            else
-            {
-                ShowNotification("Нечего отменять", true);
-            }
-        }
-
-        // === Работа с профилями ===
-        private void BtnCreateProfile_Click(object sender, RoutedEventArgs e)
-        {
-            var profile = new Profile
-            {
-                Id = Guid.NewGuid(),
-                Name = $"Профиль {profiles.Count + 1}",
-                Description = "Новый профиль",
-                FilesSnapshot = files.ToList(),
-                CreatedAt = DateTime.Now,
-                FilesCount = $"Файлов: {files.Count}"
-            };
-
-            profiles.Add(profile);
-            SaveData();
-            UpdateStats();
-            ShowNotification("✓ Профиль создан");
-        }
-
-        private void BtnApplyProfile_Click(object sender, RoutedEventArgs e)
-        {
-            var button = sender as Button;
-            var profile = button?.Tag as Profile;
-            if (profile != null)
-            {
-                files.Clear();
-                foreach (var item in profile.FilesSnapshot)
-                {
-                    // Проверяем, существует ли файл
-                    if (File.Exists(item.Path))
-                    {
-                        files.Add(item);
-                    }
-                }
-                SaveData();
-                UpdateStats();
-                ShowNotification($"✓ Профиль \"{profile.Name}\" применён");
-            }
-        }
-
-        private void BtnDeleteProfile_Click(object sender, RoutedEventArgs e)
-        {
-            var button = sender as Button;
-            var profile = button?.Tag as Profile;
-            if (profile != null)
-            {
-                var result = MessageBox.Show(
-                    $"Удалить профиль \"{profile.Name}\"?",
-                    "Подтверждение",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question
-                );
-
-                if (result == MessageBoxResult.Yes)
-                {
-                    profiles.Remove(profile);
-                    SaveData();
-                    UpdateStats();
-                    ShowNotification("✓ Профиль удалён");
-                }
-            }
-        }
-
-        // === Экспорт/Импорт ===
-        private void BtnExport_Click(object sender, RoutedEventArgs e)
-        {
-            var dialog = new SaveFileDialog
-            {
-                Filter = "JSON файлы (*.json)|*.json",
-                FileName = $"DeskFlow_Backup_{DateTime.Now:yyyyMMdd_HHmmss}.json"
-            };
-
-            if (dialog.ShowDialog() == true)
-            {
-                try
-                {
-                    var data = new AppData
-                    {
-                        Files = files.ToList(),
-                        Profiles = profiles.ToList(),
-                        ExportedAt = DateTime.Now
-                    };
-                    var json = JsonConvert.SerializeObject(data, Formatting.Indented);
-                    File.WriteAllText(dialog.FileName, json);
-                    ShowNotification("✓ Данные экспортированы");
-                }
-                catch (Exception ex)
-                {
-                    ShowNotification($"Ошибка экспорта: {ex.Message}", true);
-                }
-            }
-        }
-
-        private void BtnImport_Click(object sender, RoutedEventArgs e)
-        {
-            var dialog = new OpenFileDialog
-            {
-                Filter = "JSON файлы (*.json)|*.json"
-            };
-
-            if (dialog.ShowDialog() == true)
-            {
-                try
-                {
-                    var json = File.ReadAllText(dialog.FileName);
-                    var data = JsonConvert.DeserializeObject<AppData>(json);
-
-                    if (data != null)
-                    {
-                        files = new ObservableCollection<FileItem>(data.Files ?? new List<FileItem>());
-                        profiles = new ObservableCollection<Profile>(data.Profiles ?? new List<Profile>());
-                        FilesListBox.ItemsSource = files;
-                        ProfilesListBox.ItemsSource = profiles;
-                        SaveData();
-                        UpdateStats();
-                        ShowNotification("✓ Данные импортированы");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    ShowNotification($"Ошибка импорта: {ex.Message}", true);
-                }
-            }
-        }
-
-        // === Вспомогательные методы ===
-        private string GetFileCategory(string extension)
-        {
-            extension = extension.ToLower();
-            if (new[] { ".doc", ".docx", ".pdf", ".txt", ".xlsx", ".xls", ".pptx", ".ppt", ".odt", ".rtf" }.Contains(extension))
-                return "Документы";
-            if (new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp", ".ico" }.Contains(extension))
-                return "Изображения";
-            if (new[] { ".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm" }.Contains(extension))
-                return "Видео";
-            if (new[] { ".mp3", ".wav", ".flac", ".aac", ".ogg", ".wma", ".m4a" }.Contains(extension))
-                return "Аудио";
-            if (new[] { ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2" }.Contains(extension))
-                return "Архивы";
-            if (new[] { ".exe", ".msi", ".bat", ".cmd", ".sh" }.Contains(extension))
-                return "Исполняемые";
-            return "Прочие";
-        }
-
-        private string GetFileIcon(string extension)
-        {
-            var category = GetFileCategory(extension);
-            return category switch
-            {
-                "Документы" => "📄",
-                "Изображения" => "🖼️",
-                "Видео" => "🎥",
-                "Аудио" => "🎵",
-                "Архивы" => "📦",
-                "Исполняемые" => "⚙️",
-                _ => "📁"
-            };
-        }
-
-        private string GetCategoryColor(string category)
-        {
-            return category switch
-            {
-                "Документы" => "#3B82F6",
-                "Изображения" => "#10B981",
-                "Видео" => "#EF4444",
-                "Аудио" => "#F59E0B",
-                "Архивы" => "#8B5CF6",
-                "Исполняемые" => "#EC4899",
-                _ => "#6B7280"
-            };
-        }
-
-        private string FormatFileSize(long bytes)
-        {
-            if (bytes < 1024) return $"{bytes} B";
-            if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
-            if (bytes < 1024 * 1024 * 1024) return $"{bytes / (1024.0 * 1024):F1} MB";
-            return $"{bytes / (1024.0 * 1024 * 1024):F1} GB";
-        }
-
-        private void UpdateStats()
-        {
-            FileCountText.Text = $"Файлов: {files.Count}";
-            ProfileCountText.Text = $"Профилей: {profiles.Count}";
-            FilesStatsText.Text = $"Файлов в системе: {files.Count}";
-            ProfilesStatsText.Text = $"Профилей создано: {profiles.Count}";
-        }
-
-        private void ShowNotification(string message, bool isError = false)
-        {
-            if (ChkNotifications?.IsChecked != true && !isError) return;
-
-            NotificationText.Text = message;
-            NotificationToast.BorderBrush = new SolidColorBrush(
-                isError ? Color.FromRgb(239, 68, 68) : Color.FromRgb(16, 185, 129)
-            );
-            NotificationToast.Visibility = Visibility.Visible;
-
-            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-            timer.Tick += (s, args) =>
-            {
-                NotificationToast.Visibility = Visibility.Collapsed;
-                timer.Stop();
-            };
-            timer.Start();
-        }
-
-        protected override void OnClosed(EventArgs e)
-        {
-            desktopWatcher?.Dispose();
-            base.OnClosed(e);
-        }
-    }
-
-    // === Модели данных ===
-    public class FileItem
-    {
-        public Guid Id { get; set; }
-        public string Name { get; set; }
-        public string Path { get; set; }
-        public string Size { get; set; }
-        public string Category { get; set; }
-        public string Icon { get; set; }
-        public string CategoryColor { get; set; }
-    }
-
-    public class Profile
-    {
-        public Guid Id { get; set; }
-        public string Name { get; set; }
-        public string Description { get; set; }
-        public List<FileItem> FilesSnapshot { get; set; }
-        public DateTime CreatedAt { get; set; }
-        public string FilesCount { get; set; }
-    }
-
-    public class AppData
-    {
-        public List<FileItem> Files { get; set; }
-        public List<Profile> Profiles { get; set; }
-        public DateTime ExportedAt { get; set; }
     }
 }
