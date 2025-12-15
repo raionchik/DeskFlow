@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using Newtonsoft.Json;
@@ -17,10 +18,14 @@ namespace DeskFlow
         private ObservableCollection<Profile> profiles = new ObservableCollection<Profile>();
         private List<List<FileItem>> sortingHistory = new List<List<FileItem>>();
         private string dataFilePath;
+        private string desktopPath;
+        private FileSystemWatcher desktopWatcher;
 
         public MainWindow()
         {
             InitializeComponent();
+
+            desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
             dataFilePath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "DeskFlow",
@@ -33,6 +38,167 @@ namespace DeskFlow
 
             LoadData();
             UpdateStats();
+
+            // Инициализация мониторинга рабочего стола
+            InitializeDesktopWatcher();
+        }
+
+        private void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            // Автоматическое сканирование рабочего стола при запуске
+            ScanDesktop();
+            ShowNotification($"Автоматически загружено {files.Count} файлов с рабочего стола");
+        }
+
+        // === Мониторинг рабочего стола ===
+        private void InitializeDesktopWatcher()
+        {
+            desktopWatcher = new FileSystemWatcher
+            {
+                Path = desktopPath,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime,
+                Filter = "*.*",
+                EnableRaisingEvents = true
+            };
+
+            desktopWatcher.Created += OnDesktopFileCreated;
+            desktopWatcher.Deleted += OnDesktopFileDeleted;
+            desktopWatcher.Renamed += OnDesktopFileRenamed;
+        }
+
+        private void OnDesktopFileCreated(object sender, FileSystemEventArgs e)
+        {
+            if (ChkMonitoring?.IsChecked != true) return;
+
+            Dispatcher.Invoke(() =>
+            {
+                try
+                {
+                    var fileInfo = new FileInfo(e.FullPath);
+                    if (fileInfo.Exists && !files.Any(f => f.Path == e.FullPath))
+                    {
+                        var fileItem = CreateFileItem(fileInfo);
+                        files.Add(fileItem);
+                        SaveData();
+                        UpdateStats();
+                        ShowNotification($"➕ Обнаружен новый файл: {fileInfo.Name}");
+
+                        if (ChkAutoSort?.IsChecked == true)
+                        {
+                            AutoSort();
+                        }
+                    }
+                }
+                catch { }
+            });
+        }
+
+        private void OnDesktopFileDeleted(object sender, FileSystemEventArgs e)
+        {
+            if (ChkMonitoring?.IsChecked != true) return;
+
+            Dispatcher.Invoke(() =>
+            {
+                var fileToRemove = files.FirstOrDefault(f => f.Path == e.FullPath);
+                if (fileToRemove != null)
+                {
+                    files.Remove(fileToRemove);
+                    SaveData();
+                    UpdateStats();
+                    ShowNotification($"➖ Файл удалён с рабочего стола: {fileToRemove.Name}");
+                }
+            });
+        }
+
+        private void OnDesktopFileRenamed(object sender, RenamedEventArgs e)
+        {
+            if (ChkMonitoring?.IsChecked != true) return;
+
+            Dispatcher.Invoke(() =>
+            {
+                var fileToUpdate = files.FirstOrDefault(f => f.Path == e.OldFullPath);
+                if (fileToUpdate != null)
+                {
+                    fileToUpdate.Path = e.FullPath;
+                    fileToUpdate.Name = Path.GetFileName(e.FullPath);
+                    SaveData();
+                    ShowNotification($"📝 Файл переименован: {e.Name}");
+                }
+            });
+        }
+
+        private void ChkMonitoring_Changed(object sender, RoutedEventArgs e)
+        {
+            if (desktopWatcher != null)
+            {
+                desktopWatcher.EnableRaisingEvents = ChkMonitoring.IsChecked == true;
+                ShowNotification(ChkMonitoring.IsChecked == true
+                    ? "✓ Мониторинг рабочего стола включен"
+                    : "Мониторинг рабочего стола отключен");
+            }
+        }
+
+        private void ChkAutoSort_Changed(object sender, RoutedEventArgs e)
+        {
+            ShowNotification(ChkAutoSort.IsChecked == true
+                ? "✓ Автосортировка включена"
+                : "Автосортировка отключена");
+        }
+
+        // === Сканирование рабочего стола ===
+        private void BtnScanDesktop_Click(object sender, RoutedEventArgs e)
+        {
+            ScanDesktop();
+            ShowNotification($"✓ Рабочий стол просканирован. Найдено файлов: {files.Count}");
+        }
+
+        private void ScanDesktop()
+        {
+            try
+            {
+                files.Clear();
+                var desktopFiles = Directory.GetFiles(desktopPath);
+
+                foreach (var filePath in desktopFiles)
+                {
+                    try
+                    {
+                        var fileInfo = new FileInfo(filePath);
+                        // Пропускаем скрытые и системные файлы
+                        if ((fileInfo.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden ||
+                            (fileInfo.Attributes & FileAttributes.System) == FileAttributes.System)
+                        {
+                            continue;
+                        }
+
+                        var fileItem = CreateFileItem(fileInfo);
+                        files.Add(fileItem);
+                    }
+                    catch { } // Игнорируем файлы, к которым нет доступа
+                }
+
+                SaveData();
+                UpdateStats();
+            }
+            catch (Exception ex)
+            {
+                ShowNotification($"Ошибка сканирования: {ex.Message}", true);
+            }
+        }
+
+        private FileItem CreateFileItem(FileInfo fileInfo)
+        {
+            var category = GetFileCategory(fileInfo.Extension);
+            return new FileItem
+            {
+                Id = Guid.NewGuid(),
+                Name = fileInfo.Name,
+                Path = fileInfo.FullName,
+                Size = FormatFileSize(fileInfo.Length),
+                Category = category,
+                Icon = GetFileIcon(fileInfo.Extension),
+                CategoryColor = GetCategoryColor(category)
+            };
         }
 
         // === Работа с данными ===
@@ -46,7 +212,9 @@ namespace DeskFlow
                     var data = JsonConvert.DeserializeObject<AppData>(json);
                     if (data != null)
                     {
-                        files = new ObservableCollection<FileItem>(data.Files ?? new List<FileItem>());
+                        // Проверяем, существуют ли файлы
+                        var validFiles = data.Files?.Where(f => File.Exists(f.Path)).ToList() ?? new List<FileItem>();
+                        files = new ObservableCollection<FileItem>(validFiles);
                         profiles = new ObservableCollection<Profile>(data.Profiles ?? new List<Profile>());
                         FilesListBox.ItemsSource = files;
                         ProfilesListBox.ItemsSource = profiles;
@@ -96,6 +264,7 @@ namespace DeskFlow
         private void BtnSettings_Click(object sender, RoutedEventArgs e)
         {
             ShowPanel(SettingsPanel);
+            DesktopPathText.Text = $"Путь к рабочему столу: {desktopPath}";
         }
 
         private void ShowPanel(Grid panel)
@@ -120,18 +289,15 @@ namespace DeskFlow
             {
                 foreach (var filePath in dialog.FileNames)
                 {
+                    // Проверяем, не добавлен ли уже этот файл
+                    if (files.Any(f => f.Path == filePath))
+                        continue;
+
                     var fileInfo = new FileInfo(filePath);
-                    var fileItem = new FileItem
-                    {
-                        Id = Guid.NewGuid(),
-                        Name = fileInfo.Name,
-                        Path = filePath,
-                        Size = FormatFileSize(fileInfo.Length),
-                        Category = GetFileCategory(fileInfo.Extension),
-                        Icon = GetFileIcon(fileInfo.Extension)
-                    };
+                    var fileItem = CreateFileItem(fileInfo);
                     files.Add(fileItem);
                 }
+
                 SaveData();
                 UpdateStats();
                 ShowNotification($"Добавлено файлов: {dialog.FileNames.Length}");
@@ -152,7 +318,25 @@ namespace DeskFlow
                 files.Remove(fileItem);
                 SaveData();
                 UpdateStats();
-                ShowNotification("Файл удалён");
+                ShowNotification("Файл удалён из списка");
+            }
+        }
+
+        private void BtnClear_Click(object sender, RoutedEventArgs e)
+        {
+            var result = MessageBox.Show(
+                "Очистить весь список файлов?",
+                "Подтверждение",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question
+            );
+
+            if (result == MessageBoxResult.Yes)
+            {
+                files.Clear();
+                SaveData();
+                UpdateStats();
+                ShowNotification("✓ Список очищен");
             }
         }
 
@@ -169,21 +353,39 @@ namespace DeskFlow
                 return;
             }
 
-            // Сохраняем в историю
+            // Сохраняем текущее состояние в историю
             sortingHistory.Add(files.ToList());
             if (sortingHistory.Count > 50)
                 sortingHistory.RemoveAt(0);
 
-            // Группируем по категориям
-            var sorted = files.OrderBy(f => f.Category).ThenBy(f => f.Name).ToList();
+            // Сортируем файлы: сначала по категории, потом по имени
+            var sortedFiles = files.OrderBy(f => GetCategorySortOrder(f.Category))
+                                   .ThenBy(f => f.Name)
+                                   .ToList();
+
+            // Очищаем коллекцию и добавляем отсортированные файлы
             files.Clear();
-            foreach (var item in sorted)
+            foreach (var file in sortedFiles)
             {
-                files.Add(item);
+                files.Add(file);
             }
 
             SaveData();
             ShowNotification("✓ Файлы отсортированы по категориям");
+        }
+
+        private int GetCategorySortOrder(string category)
+        {
+            return category switch
+            {
+                "Документы" => 1,
+                "Изображения" => 2,
+                "Видео" => 3,
+                "Аудио" => 4,
+                "Архивы" => 5,
+                "Исполняемые" => 6,
+                _ => 7
+            };
         }
 
         private void BtnUndo_Click(object sender, RoutedEventArgs e)
@@ -236,7 +438,11 @@ namespace DeskFlow
                 files.Clear();
                 foreach (var item in profile.FilesSnapshot)
                 {
-                    files.Add(item);
+                    // Проверяем, существует ли файл
+                    if (File.Exists(item.Path))
+                    {
+                        files.Add(item);
+                    }
                 }
                 SaveData();
                 UpdateStats();
@@ -333,17 +539,17 @@ namespace DeskFlow
         private string GetFileCategory(string extension)
         {
             extension = extension.ToLower();
-            if (new[] { ".doc", ".docx", ".pdf", ".txt", ".xlsx", ".xls", ".pptx", ".ppt" }.Contains(extension))
+            if (new[] { ".doc", ".docx", ".pdf", ".txt", ".xlsx", ".xls", ".pptx", ".ppt", ".odt", ".rtf" }.Contains(extension))
                 return "Документы";
-            if (new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp" }.Contains(extension))
+            if (new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp", ".ico" }.Contains(extension))
                 return "Изображения";
-            if (new[] { ".mp4", ".avi", ".mkv", ".mov", ".wmv" }.Contains(extension))
+            if (new[] { ".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm" }.Contains(extension))
                 return "Видео";
-            if (new[] { ".mp3", ".wav", ".flac", ".aac", ".ogg" }.Contains(extension))
+            if (new[] { ".mp3", ".wav", ".flac", ".aac", ".ogg", ".wma", ".m4a" }.Contains(extension))
                 return "Аудио";
-            if (new[] { ".zip", ".rar", ".7z", ".tar", ".gz" }.Contains(extension))
+            if (new[] { ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2" }.Contains(extension))
                 return "Архивы";
-            if (new[] { ".exe", ".msi", ".bat" }.Contains(extension))
+            if (new[] { ".exe", ".msi", ".bat", ".cmd", ".sh" }.Contains(extension))
                 return "Исполняемые";
             return "Прочие";
         }
@@ -360,6 +566,20 @@ namespace DeskFlow
                 "Архивы" => "📦",
                 "Исполняемые" => "⚙️",
                 _ => "📁"
+            };
+        }
+
+        private string GetCategoryColor(string category)
+        {
+            return category switch
+            {
+                "Документы" => "#3B82F6",
+                "Изображения" => "#10B981",
+                "Видео" => "#EF4444",
+                "Аудио" => "#F59E0B",
+                "Архивы" => "#8B5CF6",
+                "Исполняемые" => "#EC4899",
+                _ => "#6B7280"
             };
         }
 
@@ -384,8 +604,8 @@ namespace DeskFlow
             if (ChkNotifications?.IsChecked != true && !isError) return;
 
             NotificationText.Text = message;
-            NotificationToast.BorderBrush = new System.Windows.Media.SolidColorBrush(
-                isError ? System.Windows.Media.Color.FromRgb(239, 68, 68) : System.Windows.Media.Color.FromRgb(16, 185, 129)
+            NotificationToast.BorderBrush = new SolidColorBrush(
+                isError ? Color.FromRgb(239, 68, 68) : Color.FromRgb(16, 185, 129)
             );
             NotificationToast.Visibility = Visibility.Visible;
 
@@ -396,6 +616,12 @@ namespace DeskFlow
                 timer.Stop();
             };
             timer.Start();
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            desktopWatcher?.Dispose();
+            base.OnClosed(e);
         }
     }
 
@@ -408,6 +634,7 @@ namespace DeskFlow
         public string Size { get; set; }
         public string Category { get; set; }
         public string Icon { get; set; }
+        public string CategoryColor { get; set; }
     }
 
     public class Profile

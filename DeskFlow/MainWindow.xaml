@@ -4,7 +4,8 @@
         Title="DeskFlow - Организация рабочего стола" 
         Height="700" Width="1200"
         WindowStartupLocation="CenterScreen"
-        Background="#1E293B">
+        Background="#1E293B"
+        Loaded="Window_Loaded">
 
     <Window.Resources>
         <Style TargetType="Button" x:Key="ModernButton">
@@ -70,7 +71,7 @@
                     </StackPanel>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <TextBlock x:Name="StatusText" Text="● Система готова" Foreground="#10B981" FontSize="13" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="StatusText" Text="● Мониторинг активен" Foreground="#10B981" FontSize="13" VerticalAlignment="Center"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -96,43 +97,48 @@
 
                 <!-- Toolbar -->
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
+                    <Button Content="🔄 Сканировать рабочий стол" Click="BtnScanDesktop_Click" Style="{StaticResource ModernButton}" Margin="0,0,10,0"/>
                     <Button Content="📂 Добавить файлы" Click="BtnAddFiles_Click" Style="{StaticResource ModernButton}" Margin="0,0,10,0"/>
                     <Button Content="🔄 Сортировать" Click="BtnAutoSort_Click" Style="{StaticResource ModernButton}" Background="#10B981" Margin="0,0,10,0"/>
-                    <Button Content="↺ Отменить" Click="BtnUndo_Click" Style="{StaticResource ModernButton}" Background="#64748B"/>
+                    <Button Content="↺ Отменить" Click="BtnUndo_Click" Style="{StaticResource ModernButton}" Background="#64748B" Margin="0,0,10,0"/>
+                    <Button Content="🗑️ Очистить всё" Click="BtnClear_Click" Style="{StaticResource ModernButton}" Background="#EF4444"/>
                     <TextBlock x:Name="FileCountText" Text="Файлов: 0" Foreground="#94A3B8" VerticalAlignment="Center" Margin="20,0,0,0" FontSize="14"/>
                 </StackPanel>
 
                 <!-- Files List -->
                 <Border Grid.Row="1" Background="#0F172A" CornerRadius="10" BorderBrush="#334155" BorderThickness="1">
-                    <ListBox x:Name="FilesListBox" Style="{StaticResource ModernListBox}" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="#1E293B" CornerRadius="8" Padding="15" Margin="5">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="FilesListBox" Margin="10">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#1E293B" CornerRadius="8" Padding="15" Margin="5">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
 
-                                        <Border Grid.Column="0" Background="#3B82F6" CornerRadius="6" Padding="8" Margin="0,0,15,0">
-                                            <TextBlock Text="{Binding Icon}" FontSize="20"/>
-                                        </Border>
+                                            <Border Grid.Column="0" Background="{Binding CategoryColor}" CornerRadius="6" Padding="8" Margin="0,0,15,0">
+                                                <TextBlock Text="{Binding Icon}" FontSize="20"/>
+                                            </Border>
 
-                                        <StackPanel Grid.Column="1">
-                                            <TextBlock Text="{Binding Name}" FontWeight="Medium" Foreground="White" FontSize="14"/>
-                                            <TextBlock Text="{Binding Category}" Foreground="#94A3B8" FontSize="11" Margin="0,3,0,0"/>
-                                        </StackPanel>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding Name}" FontWeight="Medium" Foreground="White" FontSize="14"/>
+                                                <TextBlock Text="{Binding Category}" Foreground="#94A3B8" FontSize="11" Margin="0,3,0,0"/>
+                                                <TextBlock Text="{Binding Path}" Foreground="#64748B" FontSize="10" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
 
-                                        <TextBlock Grid.Column="2" Text="{Binding Size}" Foreground="#64748B" VerticalAlignment="Center" Margin="15,0"/>
-                                        <Button Grid.Column="3" Content="🗑️" Background="#EF4444" Padding="8,5" BorderThickness="0" 
-                                                Cursor="Hand" Click="BtnDeleteFile_Click" Tag="{Binding}"/>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                                            <TextBlock Grid.Column="2" Text="{Binding Size}" Foreground="#64748B" VerticalAlignment="Center" Margin="15,0"/>
+                                            <Button Grid.Column="3" Content="🗑️" Background="#EF4444" Padding="8,5" BorderThickness="0" 
+                                                    Cursor="Hand" Click="BtnDeleteFile_Click" Tag="{Binding}"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </Border>
             </Grid>
 
@@ -149,148 +155,157 @@
                 </StackPanel>
 
                 <Border Grid.Row="1" Background="#0F172A" CornerRadius="10" BorderBrush="#334155" BorderThickness="1">
-                    <ListBox x:Name="ProfilesListBox" Style="{StaticResource ModernListBox}">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="#1E293B" CornerRadius="8" Padding="15" Margin="5">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="ProfilesListBox" Margin="10">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#1E293B" CornerRadius="8" Padding="15" Margin="5">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
 
-                                        <Border Grid.Column="0" Background="#8B5CF6" CornerRadius="6" Padding="8" Margin="0,0,15,0">
-                                            <TextBlock Text="👤" FontSize="20"/>
-                                        </Border>
+                                            <Border Grid.Column="0" Background="#8B5CF6" CornerRadius="6" Padding="8" Margin="0,0,15,0">
+                                                <TextBlock Text="👤" FontSize="20"/>
+                                            </Border>
 
-                                        <StackPanel Grid.Column="1">
-                                            <TextBlock Text="{Binding Name}" FontWeight="Medium" Foreground="White" FontSize="14"/>
-                                            <TextBlock Text="{Binding Description}" Foreground="#94A3B8" FontSize="11" Margin="0,3,0,0"/>
-                                            <TextBlock Text="{Binding FilesCount}" Foreground="#64748B" FontSize="11" Margin="0,3,0,0"/>
-                                        </StackPanel>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding Name}" FontWeight="Medium" Foreground="White" FontSize="14"/>
+                                                <TextBlock Text="{Binding Description}" Foreground="#94A3B8" FontSize="11" Margin="0,3,0,0"/>
+                                                <TextBlock Text="{Binding FilesCount}" Foreground="#64748B" FontSize="11" Margin="0,3,0,0"/>
+                                            </StackPanel>
 
-                                        <StackPanel Grid.Column="2" Orientation="Horizontal">
-                                            <Button Content="▶ Применить" Background="#10B981" Padding="10,5" Margin="0,0,5,0"
-                                                    BorderThickness="0" Cursor="Hand" Click="BtnApplyProfile_Click" Tag="{Binding}"/>
-                                            <Button Content="🗑️" Background="#EF4444" Padding="8,5" BorderThickness="0" 
-                                                    Cursor="Hand" Click="BtnDeleteProfile_Click" Tag="{Binding}"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                                <Button Content="▶ Применить" Background="#10B981" Padding="10,5" Margin="0,0,5,0"
+                                                        BorderThickness="0" Cursor="Hand" Click="BtnApplyProfile_Click" Tag="{Binding}"/>
+                                                <Button Content="🗑️" Background="#EF4444" Padding="8,5" BorderThickness="0" 
+                                                        Cursor="Hand" Click="BtnDeleteProfile_Click" Tag="{Binding}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </Border>
             </Grid>
 
             <!-- Sorting Tab -->
             <Grid x:Name="SortPanel" Visibility="Collapsed">
-                <StackPanel>
-                    <TextBlock Text="🔄 Автоматическая сортировка файлов" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,20"/>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="🔄 Автоматическая сортировка файлов" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,20"/>
 
-                    <Border Background="#0F172A" CornerRadius="10" Padding="20" BorderBrush="#334155" BorderThickness="1" Margin="0,0,0,15">
-                        <StackPanel>
-                            <TextBlock Text="Категории файлов:" FontSize="16" FontWeight="Medium" Foreground="White" Margin="0,0,0,15"/>
+                        <Border Background="#0F172A" CornerRadius="10" Padding="20" BorderBrush="#334155" BorderThickness="1" Margin="0,0,0,15">
+                            <StackPanel>
+                                <TextBlock Text="Категории файлов:" FontSize="16" FontWeight="Medium" Foreground="White" Margin="0,0,0,15"/>
 
-                            <Grid Margin="0,0,0,10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="200"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="📄 Документы" Foreground="#3B82F6" FontSize="14" FontWeight="Medium"/>
-                                <TextBlock Grid.Column="1" Text=".doc, .docx, .pdf, .txt, .xlsx, .pptx" Foreground="#94A3B8" FontSize="12"/>
-                            </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="200"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="📄 Документы" Foreground="#3B82F6" FontSize="14" FontWeight="Medium"/>
+                                    <TextBlock Grid.Column="1" Text=".doc, .docx, .pdf, .txt, .xlsx, .pptx" Foreground="#94A3B8" FontSize="12"/>
+                                </Grid>
 
-                            <Grid Margin="0,0,0,10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="200"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="🖼️ Изображения" Foreground="#10B981" FontSize="14" FontWeight="Medium"/>
-                                <TextBlock Grid.Column="1" Text=".jpg, .png, .gif, .bmp, .svg" Foreground="#94A3B8" FontSize="12"/>
-                            </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="200"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="🖼️ Изображения" Foreground="#10B981" FontSize="14" FontWeight="Medium"/>
+                                    <TextBlock Grid.Column="1" Text=".jpg, .png, .gif, .bmp, .svg" Foreground="#94A3B8" FontSize="12"/>
+                                </Grid>
 
-                            <Grid Margin="0,0,0,10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="200"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="🎥 Видео" Foreground="#EF4444" FontSize="14" FontWeight="Medium"/>
-                                <TextBlock Grid.Column="1" Text=".mp4, .avi, .mkv, .mov" Foreground="#94A3B8" FontSize="12"/>
-                            </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="200"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="🎥 Видео" Foreground="#EF4444" FontSize="14" FontWeight="Medium"/>
+                                    <TextBlock Grid.Column="1" Text=".mp4, .avi, .mkv, .mov" Foreground="#94A3B8" FontSize="12"/>
+                                </Grid>
 
-                            <Grid Margin="0,0,0,10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="200"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="🎵 Аудио" Foreground="#F59E0B" FontSize="14" FontWeight="Medium"/>
-                                <TextBlock Grid.Column="1" Text=".mp3, .wav, .flac, .aac" Foreground="#94A3B8" FontSize="12"/>
-                            </Grid>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="200"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="🎵 Аудио" Foreground="#F59E0B" FontSize="14" FontWeight="Medium"/>
+                                    <TextBlock Grid.Column="1" Text=".mp3, .wav, .flac, .aac" Foreground="#94A3B8" FontSize="12"/>
+                                </Grid>
 
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="200"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="📦 Архивы" Foreground="#8B5CF6" FontSize="14" FontWeight="Medium"/>
-                                <TextBlock Grid.Column="1" Text=".zip, .rar, .7z, .tar" Foreground="#94A3B8" FontSize="12"/>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="200"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="📦 Архивы" Foreground="#8B5CF6" FontSize="14" FontWeight="Medium"/>
+                                    <TextBlock Grid.Column="1" Text=".zip, .rar, .7z, .tar" Foreground="#94A3B8" FontSize="12"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
 
-                    <Border Background="#0F172A" CornerRadius="10" Padding="20" BorderBrush="#334155" BorderThickness="1">
-                        <StackPanel>
-                            <TextBlock Text="Настройки сортировки:" FontSize="16" FontWeight="Medium" Foreground="White" Margin="0,0,0,15"/>
+                        <Border Background="#0F172A" CornerRadius="10" Padding="20" BorderBrush="#334155" BorderThickness="1">
+                            <StackPanel>
+                                <TextBlock Text="Настройки сортировки:" FontSize="16" FontWeight="Medium" Foreground="White" Margin="0,0,0,15"/>
 
-                            <CheckBox x:Name="ChkAutoSort" Content="Автоматическая сортировка при добавлении файлов" 
-                                      Foreground="White" Margin="0,0,0,10" FontSize="13"/>
-                            <CheckBox x:Name="ChkNotifications" Content="Показывать уведомления" IsChecked="True"
-                                      Foreground="White" Margin="0,0,0,10" FontSize="13"/>
-                            <CheckBox x:Name="ChkCreateFolders" Content="Создавать папки для категорий" IsChecked="True"
-                                      Foreground="White" FontSize="13"/>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
+                                <CheckBox x:Name="ChkAutoSort" Content="Автоматическая сортировка при добавлении файлов" 
+                                          Foreground="White" Margin="0,0,0,10" FontSize="13" Checked="ChkAutoSort_Changed" Unchecked="ChkAutoSort_Changed"/>
+                                <CheckBox x:Name="ChkNotifications" Content="Показывать уведомления" IsChecked="True"
+                                          Foreground="White" Margin="0,0,0,10" FontSize="13"/>
+                                <CheckBox x:Name="ChkMonitoring" Content="Мониторить рабочий стол в реальном времени" IsChecked="True"
+                                          Foreground="White" FontSize="13" Checked="ChkMonitoring_Changed" Unchecked="ChkMonitoring_Changed"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
             </Grid>
 
             <!-- Settings Tab -->
             <Grid x:Name="SettingsPanel" Visibility="Collapsed">
-                <StackPanel>
-                    <TextBlock Text="⚙️ Настройки приложения" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,20"/>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="⚙️ Настройки приложения" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,20"/>
 
-                    <Border Background="#0F172A" CornerRadius="10" Padding="20" BorderBrush="#334155" BorderThickness="1" Margin="0,0,0,15">
-                        <StackPanel>
-                            <TextBlock Text="Резервное копирование:" FontSize="16" FontWeight="Medium" Foreground="White" Margin="0,0,0,15"/>
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="💾 Экспорт данных" Click="BtnExport_Click" Style="{StaticResource ModernButton}" Margin="0,0,10,0"/>
-                                <Button Content="📥 Импорт данных" Click="BtnImport_Click" Style="{StaticResource ModernButton}" Background="#10B981"/>
+                        <Border Background="#0F172A" CornerRadius="10" Padding="20" BorderBrush="#334155" BorderThickness="1" Margin="0,0,0,15">
+                            <StackPanel>
+                                <TextBlock Text="Резервное копирование:" FontSize="16" FontWeight="Medium" Foreground="White" Margin="0,0,0,15"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="💾 Экспорт данных" Click="BtnExport_Click" Style="{StaticResource ModernButton}" Margin="0,0,10,0"/>
+                                    <Button Content="📥 Импорт данных" Click="BtnImport_Click" Style="{StaticResource ModernButton}" Background="#10B981"/>
+                                </StackPanel>
                             </StackPanel>
-                        </StackPanel>
-                    </Border>
+                        </Border>
 
-                    <Border Background="#0F172A" CornerRadius="10" Padding="20" BorderBrush="#334155" BorderThickness="1">
-                        <StackPanel>
-                            <TextBlock Text="О приложении:" FontSize="16" FontWeight="Medium" Foreground="White" Margin="0,0,0,15"/>
-                            <TextBlock Foreground="#94A3B8" FontSize="13" Margin="0,0,0,5">
-                                <Run Text="Версия:" FontWeight="Medium" Foreground="White"/> 1.0.0
-                            </TextBlock>
-                            <TextBlock Foreground="#94A3B8" FontSize="13" Margin="0,0,0,5">
-                                <Run Text="Платформа:" FontWeight="Medium" Foreground="White"/> Windows 10/11
-                            </TextBlock>
-                            <TextBlock Foreground="#94A3B8" FontSize="13" Margin="0,0,0,5">
-                                <Run Text="Framework:" FontWeight="Medium" Foreground="White"/> .NET 6.0
-                            </TextBlock>
-                            <TextBlock x:Name="FilesStatsText" Foreground="#94A3B8" FontSize="13" Margin="0,0,0,5">
-                                <Run Text="Файлов в системе:" FontWeight="Medium" Foreground="White"/> 0
-                            </TextBlock>
-                            <TextBlock x:Name="ProfilesStatsText" Foreground="#94A3B8" FontSize="13">
-                                <Run Text="Профилей создано:" FontWeight="Medium" Foreground="White"/> 0
-                            </TextBlock>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
+                        <Border Background="#0F172A" CornerRadius="10" Padding="20" BorderBrush="#334155" BorderThickness="1">
+                            <StackPanel>
+                                <TextBlock Text="О приложении:" FontSize="16" FontWeight="Medium" Foreground="White" Margin="0,0,0,15"/>
+                                <TextBlock Foreground="#94A3B8" FontSize="13" Margin="0,0,0,5">
+                                    <Run Text="Версия:" FontWeight="Medium" Foreground="White"/> 1.0.0
+                                </TextBlock>
+                                <TextBlock Foreground="#94A3B8" FontSize="13" Margin="0,0,0,5">
+                                    <Run Text="Платформа:" FontWeight="Medium" Foreground="White"/> Windows 10/11
+                                </TextBlock>
+                                <TextBlock Foreground="#94A3B8" FontSize="13" Margin="0,0,0,5">
+                                    <Run Text="Framework:" FontWeight="Medium" Foreground="White"/> .NET 6.0
+                                </TextBlock>
+                                <TextBlock x:Name="FilesStatsText" Foreground="#94A3B8" FontSize="13" Margin="0,0,0,5">
+                                    <Run Text="Файлов в системе:" FontWeight="Medium" Foreground="White"/> 0
+                                </TextBlock>
+                                <TextBlock x:Name="ProfilesStatsText" Foreground="#94A3B8" FontSize="13" Margin="0,0,0,5">
+                                    <Run Text="Профилей создано:" FontWeight="Medium" Foreground="White"/> 0
+                                </TextBlock>
+                                <TextBlock x:Name="DesktopPathText" Foreground="#94A3B8" FontSize="13">
+                                    <Run Text="Путь к рабочему столу:" FontWeight="Medium" Foreground="White"/>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
             </Grid>
         </Grid>
 
