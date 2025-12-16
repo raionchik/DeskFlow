@@ -121,64 +121,121 @@
                 </Border>
             </Grid>
             <!-- Widgets Tab -->
-            <Grid x:Name="WidgetsPanel" Visibility="Collapsed">
+            <Grid x:Name="WidgetsPanel" Visibility="Collapsed" Margin="20">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <StackPanel Margin="0,0,0,15">
+                <StackPanel Grid.Row="0" Margin="0,0,0,15">
                     <TextBlock Text="📊 Виджеты рабочего стола" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,10"/>
                     <TextBlock Text="Добавляйте полезные виджеты на свой рабочий стол" Foreground="#94A3B8" FontSize="13"/>
                 </StackPanel>
+
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
+                    <StackPanel>
 
-                        <!-- Clock Widget -->
-                        <Border Grid.Column="0" Background="#0F172A" CornerRadius="10" BorderBrush="#334155" BorderThickness="1" Margin="0,0,10,0" Padding="20">
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
-                                    <TextBlock Text="🕐" FontSize="24" Margin="0,0,10,0"/>
-                                    <TextBlock Text="Часы и дата" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
-                                </StackPanel>
+                        <Grid Margin="0,0,0,20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
 
-                                <Border Background="#1E293B" CornerRadius="8" Padding="30,20" Margin="0,0,0,15">
-                                    <StackPanel>
-                                        <TextBlock x:Name="ClockTime" Text="00:00:00" FontSize="42" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
-                                        <TextBlock x:Name="ClockDate" Text="Понедельник, 1 января 2024" FontSize="14" Foreground="#94A3B8" HorizontalAlignment="Center" Margin="0,10,0,0"/>
-                                    </StackPanel>
-                                </Border>
-
+                            <Border Grid.Column="0" Background="#0F172A" CornerRadius="10" BorderBrush="#334155" BorderThickness="1" Margin="0,0,10,0" Padding="20">
                                 <StackPanel>
-                                    <TextBlock Text="Формат времени:" Foreground="#94A3B8" FontSize="12" Margin="0,0,0,5"/>
-                                    <ComboBox x:Name="ClockFormat" SelectedIndex="0" Background="#1E293B" Foreground="White" BorderBrush="#475569">
-                                        <ComboBoxItem Content="24 часа"/>
-                                        <ComboBoxItem Content="12 часов (AM/PM)"/>
-                                    </ComboBox>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
+                                        <TextBlock Text="🕐" FontSize="24" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Часы и дата" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <Border Background="#1E293B" CornerRadius="8" Padding="30,20" Margin="0,0,0,15">
+                                        <StackPanel>
+                                            <TextBlock x:Name="ClockTime" Text="00:00:00" FontSize="42" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                                            <TextBlock x:Name="ClockDate" Text="Понедельник, 1 января 2024" FontSize="14" Foreground="#94A3B8" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <StackPanel>
+                                        <TextBlock Text="Формат времени:" Foreground="#94A3B8" FontSize="12" Margin="0,0,0,5"/>
+                                        <ComboBox x:Name="ClockFormat" SelectedIndex="0" Background="#1E293B" Foreground="White" BorderBrush="#475569">
+                                            <ComboBoxItem Content="24 часа"/>
+                                            <ComboBoxItem Content="12 часов (AM/PM)"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <Button Content="Показать на рабочем столе" Click="ShowClockOnDesktop_Click" Style="{StaticResource ModernButton}" Margin="0,10,0,0"/>
                                 </StackPanel>
-                                <Button Content="Показать на рабочем столе" Click="ShowClockOnDesktop_Click" Style="{StaticResource ModernButton}" Margin="0,10,0,0"/>
-                            </StackPanel>
-                        </Border>
-                        <!-- Calendar Widget -->
-                        <Border Grid.Column="1" Background="#0F172A" CornerRadius="10" BorderBrush="#334155" BorderThickness="1" Margin="10,0,0,0" Padding="20">
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
-                                    <TextBlock Text="📅" FontSize="24" Margin="0,0,10,0"/>
-                                    <TextBlock Text="Календарь" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
-                                </StackPanel>
+                            </Border>
 
-                                <Calendar x:Name="CalendarWidget"
-                                          Background="#1E293B"
-                                          Foreground="White"
-                                          BorderBrush="#475569"
-                                          FirstDayOfWeek="Monday"/>
-                                <Button Content="Показать на рабочем столе" Click="ShowCalendarOnDesktop_Click" Style="{StaticResource ModernButton}" Margin="0,10,0,0"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
+                            <Border Grid.Column="1" Background="#0F172A" CornerRadius="10" BorderBrush="#334155" BorderThickness="1" Margin="10,0,0,0" Padding="20">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
+                                        <TextBlock Text="📅" FontSize="24" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Календарь" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <Calendar x:Name="CalendarWidget"
+                                  Background="#1E293B"
+                                  Foreground="White"
+                                  BorderBrush="#475569"
+                                  FirstDayOfWeek="Monday"/>
+                                    <Button Content="Показать на рабочем столе" Click="ShowCalendarOnDesktop_Click" Style="{StaticResource ModernButton}" Margin="0,10,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0" Background="#0F172A" CornerRadius="10" BorderBrush="#334155" BorderThickness="1" Margin="0,0,10,0" Padding="20">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
+                                        <TextBlock Text="📝" FontSize="24" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Заметки" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <Border Background="#1E293B" CornerRadius="8" Padding="15" Margin="0,0,0,15" Height="150">
+                                        <TextBlock Text="{Binding ElementName=NotesTextBox, Path=Text}" 
+                                       Foreground="#94A3B8" 
+                                       TextWrapping="Wrap"
+                                       TextTrimming="WordEllipsis"
+                                       FontStyle="Italic"/>
+                                    </Border>
+
+                                    <Button Content="Показать на рабочем столе" Click="ShowNotesOnDesktop_Click" Style="{StaticResource ModernButton}" Margin="0,10,0,0"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Grid.Column="1" Background="#0F172A" CornerRadius="10" BorderBrush="#334155" BorderThickness="1" Margin="10,0,0,0" Padding="20">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
+                                        <TextBlock Text="✅" FontSize="24" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Список задач" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <ListView ItemsSource="{Binding tasks}"
+                                  Background="Transparent" 
+                                  BorderThickness="0"
+                                  Foreground="White"
+                                  MaxHeight="150"
+                                  Margin="0,0,0,15">
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Completed, Converter={StaticResource BoolToSymbolConverter}}" Margin="0,0,5,0" FontWeight="Bold"/>
+                                                    <TextBlock Text="{Binding Text}" 
+                                                   TextTrimming="CharacterEllipsis"
+                                                   MaxWidth="200"
+                                                   Foreground="White"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+
+                                    <Button Content="Показать на рабочем столе" Click="ShowTasksOnDesktop_Click" Style="{StaticResource ModernButton}" Margin="0,10,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                    </StackPanel>
                 </ScrollViewer>
             </Grid>
             <!-- Notes and Tasks Tab (в одном месте) -->

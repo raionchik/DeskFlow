@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Calendar" Height="300" Width="300"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        Topmost="True" MouseLeftButtonDown="Window_MouseLeftButtonDown">
+        Topmost="False" MouseLeftButtonDown="Window_MouseLeftButtonDown">
     <Border Background="#0F172A" CornerRadius="10" BorderBrush="#334155" BorderThickness="1" Padding="20">
         <StackPanel>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
