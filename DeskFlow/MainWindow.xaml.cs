@@ -255,7 +255,7 @@ namespace DeskFlow
             notesTimer?.Stop();
             notesTimer?.Start();
             NotesStatus.Text = "Сохранение...";
-            NotesStatus.Foreground = new SolidColorBrush(Color.FromRgb(251, 191, 36));
+            NotesStatus.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(251, 191, 36));
 
             if (notesWidget != null && notesWidget.IsLoaded)
             {
@@ -273,7 +273,7 @@ namespace DeskFlow
                 var notesPath = Path.Combine(Path.GetDirectoryName(dataFilePath) ?? string.Empty, "notes.txt");
                 File.WriteAllText(notesPath, NotesTextBox.Text);
                 NotesStatus.Text = "✓ Сохранено автоматически";
-                NotesStatus.Foreground = new SolidColorBrush(Color.FromRgb(16, 185, 129));
+                NotesStatus.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(16, 185, 129));
             }
             catch { }
         }
@@ -328,7 +328,7 @@ namespace DeskFlow
 
         private void BtnDeleteTask_Click(object sender, RoutedEventArgs e)
         {
-            var button = sender as Button;
+            var button = sender as System.Windows.Controls.Button;
             var task = button?.Tag as TaskItem;
             if (task != null)
             {
@@ -534,7 +534,7 @@ namespace DeskFlow
 
         private void BtnAddFiles_Click(object sender, RoutedEventArgs e)
         {
-            var dlg = new OpenFileDialog { Multiselect = true };
+            var dlg = new Microsoft.Win32.OpenFileDialog { Multiselect = true };
             if (dlg.ShowDialog() == true)
             {
                 foreach (var file in dlg.FileNames)
@@ -588,7 +588,7 @@ namespace DeskFlow
         private void BtnClear_Click(object sender, RoutedEventArgs e)
         {
             if (files.Count == 0) return;
-            if (MessageBox.Show("Удалить все файлы с рабочего стола?", "Очистка", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            if (System.Windows.MessageBox.Show("Удалить все файлы с рабочего стола?", "Очистка", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
             {
                 foreach (var f in files.ToList())
                 {
@@ -613,13 +613,16 @@ namespace DeskFlow
 
         private void BtnDeleteFile_Click(object sender, RoutedEventArgs e)
         {
-            var btn = sender as Button;
+            var btn = sender as System.Windows.Controls.Button;
             var file = btn?.Tag as FileItem;
-            if (file != null && MessageBox.Show($"Удалить {file.Name ?? string.Empty}?", "Удаление", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            if (file != null && System.Windows.MessageBox.Show($"Удалить {file.Name ?? string.Empty}?", "Удаление", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
             {
                 try
                 {
-                    File.Delete(file.Path ?? string.Empty);
+                    if (!string.IsNullOrEmpty(file.Path))
+                    {
+                        File.Delete(file.Path);
+                    }
                     files.Remove(file);
                     SaveData();
                     UpdateStats();
@@ -654,7 +657,7 @@ namespace DeskFlow
                 ShowNotification("Нет файлов для перемещения", true);
                 return;
             }
-            var result = MessageBox.Show(
+            var result = System.Windows.MessageBox.Show(
                 $"Переместить {files.Count} файлов в папки-категории?\n\nПапки будут созданы в: {sortDirectory}",
                 "Подтверждение перемещения",
                 MessageBoxButton.YesNo,
@@ -724,7 +727,7 @@ namespace DeskFlow
                 SaveData();
                 ShowNotification($"✓ Перемещено файлов: {movedCount}");
 
-                var openResult = MessageBox.Show(
+                var openResult = System.Windows.MessageBox.Show(
                     "Открыть папку с отсортированными файлами?",
                     "Перемещение завершено",
                     MessageBoxButton.YesNo,
@@ -789,14 +792,14 @@ namespace DeskFlow
         {
             switch (category)
             {
-                case "Документы": return new SolidColorBrush(Color.FromRgb(59, 130, 246));
-                case "Изображения": return new SolidColorBrush(Color.FromRgb(16, 185, 129));
-                case "Видео": return new SolidColorBrush(Color.FromRgb(239, 68, 68));
-                case "Аудио": return new SolidColorBrush(Color.FromRgb(245, 158, 11));
-                case "Архивы": return new SolidColorBrush(Color.FromRgb(139, 92, 246));
-                case "Приложения": return new SolidColorBrush(Color.FromRgb(34, 197, 94));
-                case "Ярлыки": return new SolidColorBrush(Color.FromRgb(251, 191, 36));
-                default: return new SolidColorBrush(Color.FromRgb(100, 116, 139));
+                case "Документы": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(59, 130, 246));
+                case "Изображения": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(16, 185, 129));
+                case "Видео": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(239, 68, 68));
+                case "Аудио": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(245, 158, 11));
+                case "Архивы": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(139, 92, 246));
+                case "Приложения": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(34, 197, 94));
+                case "Ярлыки": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(251, 191, 36));
+                default: return new SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 116, 139));
             }
         }
 
@@ -829,7 +832,7 @@ namespace DeskFlow
 
         private void BtnApplyProfile_Click(object sender, RoutedEventArgs e)
         {
-            var btn = sender as Button;
+            var btn = sender as System.Windows.Controls.Button;
             var profile = btn?.Tag as Profile;
             if (profile != null)
             {
@@ -848,7 +851,7 @@ namespace DeskFlow
 
         private void BtnDeleteProfile_Click(object sender, RoutedEventArgs e)
         {
-            var btn = sender as Button;
+            var btn = sender as System.Windows.Controls.Button;
             var profile = btn?.Tag as Profile;
             if (profile != null)
             {
@@ -861,7 +864,7 @@ namespace DeskFlow
         // === Резервное копирование ===
         private void BtnExport_Click(object sender, RoutedEventArgs e)
         {
-            var dlg = new SaveFileDialog { Filter = "JSON files (*.json)|*.json" };
+            var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "JSON files (*.json)|*.json" };
             if (dlg.ShowDialog() == true)
             {
                 try
@@ -884,7 +887,7 @@ namespace DeskFlow
 
         private void BtnImport_Click(object sender, RoutedEventArgs e)
         {
-            var dlg = new OpenFileDialog { Filter = "JSON files (*.json)|*.json" };
+            var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "JSON files (*.json)|*.json" };
             if (dlg.ShowDialog() == true)
             {
                 try
@@ -979,7 +982,7 @@ namespace DeskFlow
         private void ShowNotification(string text, bool error = false)
         {
             NotificationText.Text = text;
-            NotificationToast.BorderBrush = error ? new SolidColorBrush(Color.FromRgb(239, 68, 68)) : new SolidColorBrush(Color.FromRgb(16, 185, 129));
+            NotificationToast.BorderBrush = error ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(239, 68, 68)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(16, 185, 129));
             NotificationToast.Visibility = Visibility.Visible;
             notificationTimer?.Stop();
             notificationTimer?.Start();
