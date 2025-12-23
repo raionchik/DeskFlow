@@ -62,7 +62,10 @@ namespace DeskFlow
         private DispatcherTimer? clockTimer;
         private DispatcherTimer? notesTimer;
         private DispatcherTimer? notificationTimer;
+        private DispatcherTimer? fileProcessingTimer; // НОВОЕ: для отложенной обработки файлов
+        private Queue<FileSystemEventArgs> pendingFileEvents = new Queue<FileSystemEventArgs>(); // НОВОЕ
 
+        // Виджеты
         private ClockWidget? clockWidget;
         private CalendarWidget? calendarWidget;
         private NotesWidget? notesWidget;
@@ -73,7 +76,7 @@ namespace DeskFlow
             InitializeComponent();
 
             desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-            sortDirectory = desktopPath; // По умолчанию - рабочий стол
+            sortDirectory = desktopPath;
             dataFilePath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "DeskFlow",
@@ -98,7 +101,99 @@ namespace DeskFlow
             InitializeClock();
             InitializeNotesAutoSave();
             InitializeNotificationTimer();
+            InitializeFileProcessingTimer(); // НОВОЕ
             ClockFormat.SelectionChanged += (s, e) => UpdateClock();
+        }
+
+        // НОВОЕ: Таймер для отложенной обработки файлов
+        private void InitializeFileProcessingTimer()
+        {
+            fileProcessingTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            fileProcessingTimer.Tick += (s, e) =>
+            {
+                fileProcessingTimer.Stop();
+                ProcessPendingFileEvents();
+            };
+        }
+
+        // НОВОЕ: Обработка накопленных событий файловой системы
+        private void ProcessPendingFileEvents()
+        {
+            try
+            {
+                while (pendingFileEvents.Count > 0)
+                {
+                    var evt = pendingFileEvents.Dequeue();
+                    ProcessFileEvent(evt);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Ошибка обработки событий: {ex.Message}");
+            }
+        }
+
+        // НОВОЕ: Безопасная обработка события файловой системы
+        private void ProcessFileEvent(FileSystemEventArgs e)
+        {
+            try
+            {
+                if (!File.Exists(e.FullPath))
+                {
+                    // Файл был удален
+                    var fileToRemove = files.FirstOrDefault(f => f.Path == e.FullPath);
+                    if (fileToRemove != null)
+                    {
+                        files.Remove(fileToRemove);
+                        SaveData();
+                        UpdateStats();
+                    }
+                    return;
+                }
+
+                // Ждем, пока файл станет доступен
+                System.Threading.Thread.Sleep(100);
+
+                var fileInfo = new FileInfo(e.FullPath);
+
+                // Проверяем, что файл существует и доступен
+                if (!fileInfo.Exists) return;
+
+                // Пропускаем системные и скрытые файлы
+                if ((fileInfo.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden ||
+                    (fileInfo.Attributes & FileAttributes.System) == FileAttributes.System)
+                {
+                    return;
+                }
+
+                // Проверяем, нет ли уже такого файла
+                var existingFile = files.FirstOrDefault(f => f.Path == e.FullPath);
+                if (existingFile != null)
+                {
+                    // Обновляем существующий файл
+                    existingFile.Name = fileInfo.Name;
+                    existingFile.Size = FormatFileSize(fileInfo.Length);
+                }
+                else
+                {
+                    // Добавляем новый файл
+                    var fileItem = CreateFileItem(fileInfo);
+                    files.Add(fileItem);
+                    ShowNotification($"➕ Новый файл: {fileInfo.Name}");
+
+                    if (ChkAutoSort?.IsChecked == true)
+                    {
+                        AutoSort();
+                    }
+                }
+
+                SaveData();
+                UpdateStats();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Ошибка обработки файла {e.FullPath}: {ex.Message}");
+            }
         }
 
         private void InitializeNotificationTimer()
@@ -129,7 +224,7 @@ namespace DeskFlow
         private void UpdateClock()
         {
             var now = DateTime.Now;
-            bool is24Hour = ClockFormat.SelectedIndex == 0;
+            bool is24Hour = ClockFormat?.SelectedIndex == 0;
 
             ClockTime.Text = is24Hour
                 ? now.ToString("HH:mm:ss")
@@ -137,6 +232,11 @@ namespace DeskFlow
 
             var culture = new CultureInfo("ru-RU");
             ClockDate.Text = now.ToString("dddd, d MMMM yyyy", culture);
+
+            if (clockWidget != null && clockWidget.IsLoaded)
+            {
+                clockWidget.ClockFormat.SelectedIndex = ClockFormat.SelectedIndex;
+            }
         }
 
         // === Автосохранение заметок ===
@@ -156,9 +256,13 @@ namespace DeskFlow
             notesTimer?.Start();
             NotesStatus.Text = "Сохранение...";
             NotesStatus.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(251, 191, 36));
-            if (notesWidget != null)
+
+            if (notesWidget != null && notesWidget.IsLoaded)
             {
-                notesWidget.NotesTextBox.Text = NotesTextBox.Text;
+                if (notesWidget.NotesTextBox.Text != NotesTextBox.Text)
+                {
+                    notesWidget.NotesTextBox.Text = NotesTextBox.Text;
+                }
             }
         }
 
@@ -210,20 +314,16 @@ namespace DeskFlow
                 Text = NewTaskTextBox.Text,
                 Completed = false
             };
-            tasks.Add(task); // Виджет обновится сам, так как коллекция общая
+            tasks.Add(task);
             NewTaskTextBox.Text = string.Empty;
             SaveData();
             UpdateTasksStats();
-
-            // УДАЛЕНО: if (tasksWidget != null) { ... }
         }
 
         private void TaskCheckBox_Changed(object sender, RoutedEventArgs e)
         {
             SaveData();
             UpdateTasksStats();
-
-            // УДАЛЕНО: if (tasksWidget != null) { ... }
         }
 
         private void BtnDeleteTask_Click(object sender, RoutedEventArgs e)
@@ -232,11 +332,9 @@ namespace DeskFlow
             var task = button?.Tag as TaskItem;
             if (task != null)
             {
-                tasks.Remove(task); // Виджет обновится сам
+                tasks.Remove(task);
                 SaveData();
                 UpdateTasksStats();
-
-                // УДАЛЕНО: if (tasksWidget != null) { ... }
             }
         }
 
@@ -244,88 +342,145 @@ namespace DeskFlow
         {
             var completed = tasks.Count(t => t.Completed);
             TasksStats.Text = $"Выполнено: {completed} из {tasks.Count}";
-
-            // УДАЛЕНО: if (tasksWidget != null) { ... }
         }
 
-        // === Мониторинг рабочего стола ===
+        // === Мониторинг рабочего стола (ИСПРАВЛЕНО) ===
         private void InitializeDesktopWatcher()
         {
-            desktopWatcher = new FileSystemWatcher
+            try
             {
-                Path = desktopPath,
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime,
-                Filter = "*.*",
-                EnableRaisingEvents = true
-            };
-            desktopWatcher.Created += OnDesktopFileCreated;
-            desktopWatcher.Deleted += OnDesktopFileDeleted;
-            desktopWatcher.Renamed += OnDesktopFileRenamed;
+                desktopWatcher = new FileSystemWatcher
+                {
+                    Path = desktopPath,
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime,
+                    Filter = "*.*",
+                    EnableRaisingEvents = false, // Запускаем только когда включен мониторинг
+                    IncludeSubdirectories = false
+                };
+
+                desktopWatcher.Created += OnDesktopFileCreated;
+                desktopWatcher.Deleted += OnDesktopFileDeleted;
+                desktopWatcher.Renamed += OnDesktopFileRenamed;
+                desktopWatcher.Error += OnWatcherError; // НОВОЕ: обработка ошибок
+            }
+            catch (Exception ex)
+            {
+                ShowNotification($"Ошибка инициализации мониторинга: {ex.Message}", true);
+            }
+        }
+
+        // НОВОЕ: Обработка ошибок FileSystemWatcher
+        private void OnWatcherError(object sender, ErrorEventArgs e)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                ShowNotification("Ошибка мониторинга. Перезапуск...", true);
+
+                // Перезапускаем watcher
+                if (desktopWatcher != null)
+                {
+                    desktopWatcher.EnableRaisingEvents = false;
+                    System.Threading.Thread.Sleep(500);
+                    desktopWatcher.EnableRaisingEvents = ChkMonitoring?.IsChecked == true;
+                }
+            });
         }
 
         private void OnDesktopFileCreated(object sender, FileSystemEventArgs e)
         {
             if (ChkMonitoring?.IsChecked != true) return;
-            Dispatcher.Invoke(() =>
+
+            try
             {
-                try
+                // Добавляем событие в очередь вместо немедленной обработки
+                Dispatcher.Invoke(() =>
                 {
-                    var fileInfo = new FileInfo(e.FullPath);
-                    if (fileInfo.Exists && !files.Any(f => f.Path == e.FullPath))
-                    {
-                        var fileItem = CreateFileItem(fileInfo);
-                        files.Add(fileItem);
-                        SaveData();
-                        UpdateStats();
-                        ShowNotification($"➕ Новый файл: {fileInfo.Name}");
-                        if (ChkAutoSort?.IsChecked == true)
-                        {
-                            AutoSort();
-                        }
-                    }
-                }
-                catch { }
-            });
+                    pendingFileEvents.Enqueue(e);
+                    fileProcessingTimer?.Stop();
+                    fileProcessingTimer?.Start();
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Ошибка в OnDesktopFileCreated: {ex.Message}");
+            }
         }
 
         private void OnDesktopFileDeleted(object sender, FileSystemEventArgs e)
         {
             if (ChkMonitoring?.IsChecked != true) return;
-            Dispatcher.Invoke(() =>
+
+            try
             {
-                var fileToRemove = files.FirstOrDefault(f => f.Path == e.FullPath);
-                if (fileToRemove != null)
+                Dispatcher.Invoke(() =>
                 {
-                    files.Remove(fileToRemove);
-                    SaveData();
-                    UpdateStats();
-                }
-            });
+                    try
+                    {
+                        var fileToRemove = files.FirstOrDefault(f => f.Path == e.FullPath);
+                        if (fileToRemove != null)
+                        {
+                            files.Remove(fileToRemove);
+                            SaveData();
+                            UpdateStats();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Ошибка удаления файла: {ex.Message}");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Ошибка в OnDesktopFileDeleted: {ex.Message}");
+            }
         }
 
         private void OnDesktopFileRenamed(object sender, RenamedEventArgs e)
         {
             if (ChkMonitoring?.IsChecked != true) return;
-            Dispatcher.Invoke(() =>
+
+            try
             {
-                var fileToUpdate = files.FirstOrDefault(f => f.Path == e.OldFullPath);
-                if (fileToUpdate != null)
+                Dispatcher.Invoke(() =>
                 {
-                    fileToUpdate.Path = e.FullPath;
-                    fileToUpdate.Name = Path.GetFileName(e.FullPath);
-                    SaveData();
-                }
-            });
+                    try
+                    {
+                        var fileToUpdate = files.FirstOrDefault(f => f.Path == e.OldFullPath);
+                        if (fileToUpdate != null)
+                        {
+                            fileToUpdate.Path = e.FullPath;
+                            fileToUpdate.Name = Path.GetFileName(e.FullPath);
+                            SaveData();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Ошибка переименования файла: {ex.Message}");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Ошибка в OnDesktopFileRenamed: {ex.Message}");
+            }
         }
 
         private void ChkMonitoring_Changed(object sender, RoutedEventArgs e)
         {
-            if (desktopWatcher != null)
+            try
             {
-                desktopWatcher.EnableRaisingEvents = ChkMonitoring.IsChecked == true;
-                ShowNotification(ChkMonitoring.IsChecked == true
-                    ? "✓ Мониторинг включен"
-                    : "Мониторинг отключен");
+                if (desktopWatcher != null)
+                {
+                    desktopWatcher.EnableRaisingEvents = ChkMonitoring.IsChecked == true;
+                    ShowNotification(ChkMonitoring.IsChecked == true
+                        ? "✓ Мониторинг включен"
+                        : "Мониторинг отключен");
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowNotification($"Ошибка мониторинга: {ex.Message}", true);
             }
         }
 
@@ -363,7 +518,10 @@ namespace DeskFlow
                         var fileItem = CreateFileItem(fileInfo);
                         files.Add(fileItem);
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Ошибка обработки файла {filePath}: {ex.Message}");
+                    }
                 }
                 SaveData();
                 UpdateStats();
@@ -436,9 +594,15 @@ namespace DeskFlow
                 {
                     try
                     {
-                        File.Delete(f.Path ?? string.Empty);
+                        if (!string.IsNullOrEmpty(f.Path) && f.Path.StartsWith(desktopPath, StringComparison.OrdinalIgnoreCase))
+                        {
+                            File.Delete(f.Path);
+                        }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Ошибка удаления {f.Name}: {ex.Message}");
+                    }
                 }
                 files.Clear();
                 SaveData();
@@ -455,7 +619,10 @@ namespace DeskFlow
             {
                 try
                 {
-                    File.Delete(file.Path ?? string.Empty);
+                    if (!string.IsNullOrEmpty(file.Path))
+                    {
+                        File.Delete(file.Path);
+                    }
                     files.Remove(file);
                     SaveData();
                     UpdateStats();
@@ -507,13 +674,15 @@ namespace DeskFlow
             try
             {
                 int movedCount = 0;
-                var categories = files.GroupBy(f => f.Category);
+                var categories = files.Where(f => !string.IsNullOrEmpty(f.Category)).GroupBy(f => f.Category);
+
                 foreach (var category in categories)
                 {
-                    // Создаем папку для категории
-                    var categoryFolder = Path.Combine(sortDirectory, category.Key ?? string.Empty);
+                    var categoryName = category.Key ?? "Без категории";
+                    var categoryFolder = Path.Combine(sortDirectory, categoryName);
                     Directory.CreateDirectory(categoryFolder);
-                    foreach (var file in category)
+
+                    foreach (var file in category.ToList())
                     {
                         try
                         {
@@ -521,7 +690,6 @@ namespace DeskFlow
                             {
                                 var newPath = Path.Combine(categoryFolder, file.Name ?? string.Empty);
 
-                                // Если файл с таким именем уже существует, добавляем номер
                                 if (File.Exists(newPath))
                                 {
                                     var nameWithoutExt = Path.GetFileNameWithoutExtension(file.Name ?? string.Empty);
@@ -534,9 +702,20 @@ namespace DeskFlow
                                         counter++;
                                     }
                                 }
+
                                 File.Move(file.Path ?? string.Empty, newPath);
-                                file.Path = newPath; // Обновляем путь
+
+                                Dispatcher.Invoke(() =>
+                                {
+                                    file.Path = newPath;
+                                    file.Category = categoryName;
+                                });
+
                                 movedCount++;
+                            }
+                            else
+                            {
+                                Dispatcher.Invoke(() => files.Remove(file));
                             }
                         }
                         catch (Exception ex)
@@ -548,7 +727,6 @@ namespace DeskFlow
                 SaveData();
                 ShowNotification($"✓ Перемещено файлов: {movedCount}");
 
-                // Предлагаем открыть папку
                 var openResult = System.Windows.MessageBox.Show(
                     "Открыть папку с отсортированными файлами?",
                     "Перемещение завершено",
@@ -589,6 +767,8 @@ namespace DeskFlow
             if (new[] { ".mp4", ".avi", ".mkv", ".mov" }.Contains(ext)) return "Видео";
             if (new[] { ".mp3", ".wav", ".flac", ".aac" }.Contains(ext)) return "Аудио";
             if (new[] { ".zip", ".rar", ".7z", ".tar" }.Contains(ext)) return "Архивы";
+            if (new[] { ".exe", ".msi" }.Contains(ext)) return "Приложения";
+            if (new[] { ".lnk", ".url" }.Contains(ext)) return "Ярлыки";
             return "Другие";
         }
 
@@ -602,6 +782,8 @@ namespace DeskFlow
                 case "Видео": return "🎥";
                 case "Аудио": return "🎵";
                 case "Архивы": return "📦";
+                case "Приложения": return "⚙️";
+                case "Ярлыки": return "🔗";
                 default: return "📁";
             }
         }
@@ -615,6 +797,8 @@ namespace DeskFlow
                 case "Видео": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(239, 68, 68));
                 case "Аудио": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(245, 158, 11));
                 case "Архивы": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(139, 92, 246));
+                case "Приложения": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(34, 197, 94));
+                case "Ярлыки": return new SolidColorBrush(System.Windows.Media.Color.FromRgb(251, 191, 36));
                 default: return new SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 116, 139));
             }
         }
@@ -752,6 +936,7 @@ namespace DeskFlow
                         files = new ObservableCollection<FileItem>(validFiles);
                         profiles = new ObservableCollection<Profile>(data.Profiles ?? new List<Profile>());
                         tasks = new ObservableCollection<TaskItem>(data.Tasks ?? new List<TaskItem>());
+
                         FilesListBox.ItemsSource = files;
                         ProfilesListBox.ItemsSource = profiles;
                         TasksListBox.ItemsSource = tasks;
@@ -780,7 +965,7 @@ namespace DeskFlow
             }
             catch (Exception ex)
             {
-                ShowNotification($"Ошибка сохранения: {ex.Message}", true);
+                System.Diagnostics.Debug.WriteLine($"Ошибка сохранения: {ex.Message}");
             }
         }
 
@@ -852,6 +1037,7 @@ namespace DeskFlow
             if (clockWidget == null || clockWidget.IsLoaded == false)
             {
                 clockWidget = new ClockWidget();
+                clockWidget.ClockFormat.SelectedIndex = ClockFormat.SelectedIndex;
                 clockWidget.Show();
             }
             else
@@ -893,27 +1079,54 @@ namespace DeskFlow
 
         private void ShowTasksOnDesktop_Click(object sender, RoutedEventArgs e)
         {
-            // Проверяем, открыт ли уже виджет
             if (tasksWidget == null || tasksWidget.IsLoaded == false)
             {
-                // ОШИБКА CS7036 ИСПРАВЛЕНИЕ: Передаем 'tasks' и Action для сохранения
                 tasksWidget = new TasksWidget(tasks, () =>
                 {
-                    // Этот код выполнится, когда в виджете нажмут галочку или удалят задачу
                     SaveData();
                     UpdateStats();
                 });
-
-                // ОШИБКИ CS1061 ИСПРАВЛЕНИЕ:
-                // Мы удалили строки типа: tasksWidget.TasksListBox... или tasksWidget.NewTaskTextBox...
-                // Виджет сам знает, как отображать данные, так как мы передали ему 'tasks' в конструкторе выше.
-
                 tasksWidget.Show();
             }
             else
             {
                 tasksWidget.Close();
                 tasksWidget = null;
+            }
+        }
+
+        // НОВОЕ: Корректное закрытие приложения
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            base.OnClosing(e);
+
+            try
+            {
+                // Останавливаем все таймеры
+                clockTimer?.Stop();
+                notesTimer?.Stop();
+                notificationTimer?.Stop();
+                fileProcessingTimer?.Stop();
+
+                // Останавливаем FileSystemWatcher
+                if (desktopWatcher != null)
+                {
+                    desktopWatcher.EnableRaisingEvents = false;
+                    desktopWatcher.Dispose();
+                }
+
+                // Закрываем виджеты
+                clockWidget?.Close();
+                calendarWidget?.Close();
+                notesWidget?.Close();
+                tasksWidget?.Close();
+
+                // Сохраняем данные
+                SaveData();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Ошибка при закрытии: {ex.Message}");
             }
         }
     }
